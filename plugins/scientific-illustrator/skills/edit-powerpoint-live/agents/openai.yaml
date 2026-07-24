@@ -1,0 +1,4 @@
+interface:
+  display_name: "PowerPoint Scientific Drawer"
+  short_description: "Build and verify editable scientific figures live in PowerPoint"
+  default_prompt: "Use $edit-powerpoint-live to draw this figure region by region in PowerPoint and pass every review gate."

@@ -1,0 +1,41 @@
+{
+  "name": "scientific-illustrator",
+  "version": "1.3.0",
+  "description": "Design or recreate scientific figures live in draw.io or Microsoft PowerPoint with one editable, step-by-step Designer-Drawer-Reviewer-Corrector workflow.",
+  "author": {
+    "name": "科研up主:进击的土博",
+    "url": "https://github.com/icebird1998"
+  },
+  "homepage": "https://github.com/icebird1998/scientific-illustrator#readme",
+  "repository": "https://github.com/icebird1998/scientific-illustrator",
+  "license": "MIT",
+  "keywords": [
+    "scientific-illustration",
+    "drawio",
+    "powerpoint",
+    "pptx",
+    "editable-figure",
+    "mcp"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Scientific Illustrator",
+    "shortDescription": "Build editable scientific figures live in draw.io or PowerPoint.",
+    "longDescription": "Uses one backend-neutral four-role workflow with equivalent draw.io and PowerPoint mappings. The Designer specifies layout and routing, the Drawer builds stable editable objects panel by panel, the Reviewer checks renderer fidelity and deep editability, and the Corrector returns object-level repairs. Atomic raster enforcement, deterministic structure audits, exact alignment and distribution, connector clearance, and repeated local and whole-figure gates keep both backends at the same acceptance standard.",
+    "developerName": "科研up主:进击的土博",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/icebird1998/scientific-illustrator",
+    "privacyPolicyURL": "https://github.com/icebird1998/scientific-illustrator/blob/main/PRIVACY.md",
+    "defaultPrompt": [
+      "在 PowerPoint 中分面板复刻这张参考图，优先使用原生可编辑对象，并反复检查修正后保存。",
+      "在 draw.io 中逐步复刻这张参考图，保持文字、图形、表格、图表和连接线可编辑。",
+      "根据研究内容选择 draw.io 或 PowerPoint，设计一张布局整齐、箭头清晰的可编辑科学插图。"
+    ],
+    "brandColor": "#F08705"
+  },
+  "mcpServers": "./.mcp.json"
+}

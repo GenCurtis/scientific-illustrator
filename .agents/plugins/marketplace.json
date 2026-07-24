@@ -1,0 +1,20 @@
+{
+  "name": "scientific-illustrator-tools",
+  "interface": {
+    "displayName": "Scientific Illustrator Tools"
+  },
+  "plugins": [
+    {
+      "name": "scientific-illustrator",
+      "source": {
+        "source": "local",
+        "path": "./plugins/scientific-illustrator"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
