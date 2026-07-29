@@ -23,9 +23,32 @@ if (Test-Path (Join-Path $InstallDir ".git")) {
   git clone $Repository $InstallDir
 }
 
+$PythonReady = $null
+$PythonCandidates = @()
+if ($env:SCIENTIFIC_ILLUSTRATOR_PYTHON) { $PythonCandidates += $env:SCIENTIFIC_ILLUSTRATOR_PYTHON }
+$PythonCommand = Get-Command python -ErrorAction SilentlyContinue
+if ($PythonCommand) { $PythonCandidates += $PythonCommand.Source }
+foreach ($Candidate in $PythonCandidates | Select-Object -Unique) {
+  & $Candidate -c "import pptx" 2>$null
+  if ($LASTEXITCODE -eq 0) { $PythonReady = $Candidate; break }
+}
+if (-not $PythonReady -and $PythonCommand) {
+  $VenvDir = Join-Path $InstallDir "plugins\scientific-illustrator\scripts\.venv"
+  & $PythonCommand.Source -m venv $VenvDir
+  $VenvPython = Join-Path $VenvDir "Scripts\python.exe"
+  & $VenvPython -m pip install --disable-pip-version-check "python-pptx>=1.0,<2"
+  $PythonReady = $VenvPython
+}
+if ($PythonReady) {
+  Write-Host "Presentation OOXML backend: $PythonReady"
+} else {
+  Write-Warning "Python with python-pptx was not found. Windows Microsoft PowerPoint COM remains available, but Windows WPS support requires Python 3 and python-pptx."
+}
+
 codex plugin marketplace add $InstallDir
 codex plugin add $Plugin
 
 Write-Host "Installed $Plugin"
 Write-Host "Restart Codex and start a new task before first use."
-Write-Host "For PowerPoint, use Windows with desktop Microsoft PowerPoint installed."
+Write-Host "Windows PowerPoint uses COM; WPS and unconnected Mac PowerPoint use the editable PPTX OOXML backend."
+Write-Host "A connected Office.js task pane can also be selected explicitly; see the README for certificate and manifest sideload steps."

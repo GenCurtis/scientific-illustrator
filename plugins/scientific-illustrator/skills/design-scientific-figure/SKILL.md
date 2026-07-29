@@ -1,6 +1,6 @@
 ---
 name: design-scientific-figure
-description: Design a new scientific illustration, graphical abstract, workflow, architecture figure, or mechanism diagram from a brief without a reference image, for either visible draw.io or Microsoft PowerPoint. Use when a clean editable layout, planned connector lanes, consistent visual grammar, and Designer-to-Drawer-to-Reviewer-to-Corrector quality gates are required.
+description: Design a new scientific illustration, graphical abstract, workflow, architecture figure, or mechanism diagram from a brief without a reference image, for visible draw.io, Microsoft PowerPoint, or WPS Presentation. Use when a clean editable layout, planned connector lanes, consistent visual grammar, and Designer-to-Drawer-to-Reviewer-to-Corrector quality gates are required.
 ---
 
 # Design Scientific Figure
@@ -9,7 +9,7 @@ Act as the Designer in the four-role Scientific Illustrator protocol. Produce a 
 
 ## Detect constraints
 
-Read the selected backend's capabilities first. Use `powerpoint_status` then `powerpoint_get_capabilities` for PowerPoint, or `drawio_live_get_capabilities` for draw.io. Design only with semantic objects the backend adapter can create editably; use editable composites when a native monolithic object is unavailable.
+Read the selected backend's capabilities first. Use `powerpoint_status` then `powerpoint_get_capabilities` for PowerPoint/WPS, or `drawio_live_get_capabilities` for draw.io. When live Mac PowerPoint is requested, also require `powerpoint_officejs_status` to report a connected task pane. Design only with semantic objects the selected adapter can create editably; use declared editable composites when a native monolithic object is unavailable.
 
 ## Define the message
 

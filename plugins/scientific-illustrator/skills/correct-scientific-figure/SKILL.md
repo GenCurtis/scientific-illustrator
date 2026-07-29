@@ -1,6 +1,6 @@
 ---
 name: correct-scientific-figure
-description: Convert Reviewer findings for a scientific illustration into minimal, ordered, object-level correction instructions for either visible draw.io or Microsoft PowerPoint. Use when layout, text, connector, z-order, reference-fidelity, or raster editability defects must be translated into exact backend operations and measurable regression checks without flattening the figure.
+description: Convert Reviewer findings for a scientific illustration into minimal, ordered, object-level correction instructions for visible draw.io, Microsoft PowerPoint, or WPS Presentation. Use when layout, text, connector, z-order, reference-fidelity, or raster editability defects must be translated into exact backend operations and measurable regression checks without flattening the figure.
 ---
 
 # Correct Scientific Figure
@@ -62,7 +62,7 @@ Order operations by dependency: decomposition and object creation, geometry, tex
 | Equal spacing | `powerpoint_distribute_shapes` | `drawio_live_distribute_cells` |
 | Table dimensions | `powerpoint_update_table_layout` | `drawio_live_update_table_layout` |
 | Free arrow clearance | redraw with `powerpoint_add_line` clearances | redraw with `drawio_live_add_line` clearances |
-| Attached relationship | `powerpoint_add_connector` with correct sites | `drawio_live_add_edge` with entry/exit and waypoints |
+| Attached relationship | COM/OOXML: `powerpoint_add_connector` with correct sites; Office.js: rebuild its named geometry-backed route and recheck after node movement | `drawio_live_add_edge` with entry/exit and waypoints |
 | Layer order | `powerpoint_set_z_order` | `drawio_live_set_z_order` |
 | Atomic image | `powerpoint_add_image` | `drawio_live_add_image` |
 

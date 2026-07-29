@@ -26,7 +26,7 @@ const mcp = JSON.parse(await fs.readFile(mcpPath, "utf8"));
 if (entry.name !== manifest.name || manifest.name !== "scientific-illustrator") {
   throw new Error("Marketplace and manifest plugin names differ.");
 }
-if (manifest.version !== "1.3.0") throw new Error("Unexpected public release version.");
+if (manifest.version !== "1.5.0") throw new Error("Unexpected public release version.");
 if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(manifest.version)) {
   throw new Error("Manifest version is not valid semantic versioning.");
 }
@@ -52,6 +52,23 @@ for (const server of requiredServers) {
   for (const argument of definition.args.filter((value) => value.endsWith(".mjs"))) {
     await fs.access(path.resolve(pluginRoot, argument));
   }
+}
+for (const serverFile of ["live-server.mjs", "server.mjs", "powerpoint-server.mjs"]) {
+  const source = await fs.readFile(path.join(pluginRoot, "scripts", serverFile), "utf8");
+  if (!source.includes(`const SERVER_VERSION = "${manifest.version}";`)) {
+    throw new Error(`${serverFile} does not report plugin version ${manifest.version}.`);
+  }
+}
+await fs.access(path.join(pluginRoot, "scripts", "powerpoint-mac-bridge.py"));
+await fs.access(path.join(pluginRoot, "scripts", "officejs-bridge.mjs"));
+await fs.access(path.join(pluginRoot, "scripts", "officejs-setup.mjs"));
+await fs.access(path.join(pluginRoot, "officejs", "manifest.xml"));
+await fs.access(path.join(pluginRoot, "officejs", "taskpane.html"));
+const officeJsTaskpanePath = path.join(pluginRoot, "officejs", "taskpane.js");
+await fs.access(officeJsTaskpanePath);
+const officeJsTaskpane = await fs.readFile(officeJsTaskpanePath, "utf8");
+if (!officeJsTaskpane.includes('shape.shape_type !== "Line"') || !officeJsTaskpane.includes('shape.shape_type === "Image"')) {
+  throw new Error("Office.js audit must classify inspected inventory entries through shape_type.");
 }
 
 const requiredSkills = [

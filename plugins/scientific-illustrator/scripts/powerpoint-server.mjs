@@ -2,18 +2,28 @@
 
 import { execFile } from "node:child_process";
 import { existsSync, promises as fs } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { getOfficeJsBridge } from "./officejs-bridge.mjs";
 
 const execFileAsync = promisify(execFile);
 const SERVER_NAME = "powerpoint-live";
-const SERVER_VERSION = "1.3.0";
+const SERVER_VERSION = "1.5.0";
 const SUPPORTED_PROTOCOLS = new Set(["2024-11-05", "2025-03-26", "2025-06-18"]);
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const BRIDGE_PATH = path.join(SCRIPT_DIR, "powerpoint-bridge.ps1");
+const OOXML_BRIDGE_PATH = path.join(SCRIPT_DIR, "powerpoint-mac-bridge.py");
 const MAX_BUFFER = 20 * 1024 * 1024;
+const officeJsBridge = getOfficeJsBridge();
+const VALID_BACKENDS = new Set(["auto", "officejs", "com", "ooxml"]);
+let backendPreference = VALID_BACKENDS.has(String(process.env.SCIENTIFIC_ILLUSTRATOR_PPT_BACKEND || "auto").toLowerCase())
+  ? String(process.env.SCIENTIFIC_ILLUSTRATOR_PPT_BACKEND || "auto").toLowerCase()
+  : "auto";
+let lockedBackend = null;
+let mutationCount = 0;
 
 const positionProperties = {
   left: { type: "number", minimum: -100000, maximum: 100000, description: "Left position in points (72 points = 1 inch)." },
@@ -62,12 +72,43 @@ const shapeTargetProperties = {
 const tools = [
   {
     name: "powerpoint_status",
-    description: "Check whether desktop PowerPoint is installed and whether a visible presentation is currently available for native COM control. This is read-only and never launches PowerPoint.",
-    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    description: "Check Microsoft PowerPoint or WPS Presentation availability and the current managed presentation. Windows PowerPoint prefers COM; Mac PowerPoint prefers a connected Office.js task pane with per-object context.sync; WPS and unconnected Mac PowerPoint use the editable OOXML fallback. This is read-only.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        host_application: { type: "string", enum: ["auto", "powerpoint", "wps"], default: "auto" },
+        wait_for_officejs_ms: { type: "integer", minimum: 0, maximum: 120000, default: 0, description: "Optionally wait for the PowerPoint task pane to connect before reporting the selected backend." },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "powerpoint_officejs_status",
+    description: "Start or inspect the loopback HTTPS bridge used by the PowerPoint Office.js task pane. Reports certificate, manifest, connection, API-set, and setup state without modifying a presentation.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        wait_for_connection_ms: { type: "integer", minimum: 0, maximum: 120000, default: 0 },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "powerpoint_set_backend",
+    description: "Select the presentation backend for this MCP session. Use officejs for visible context.sync drawing in the current PowerPoint deck, com for Windows PowerPoint, ooxml for the safe PPTX working copy, or auto for platform selection. A backend cannot be changed after drawing mutations begin.",
+    inputSchema: {
+      type: "object",
+      required: ["backend"],
+      properties: {
+        backend: { type: "string", enum: ["auto", "officejs", "com", "ooxml"] },
+        wait_for_connection_ms: { type: "integer", minimum: 0, maximum: 120000, default: 0 },
+      },
+      additionalProperties: false,
+    },
   },
   {
     name: "powerpoint_get_capabilities",
-    description: "Read the installed PowerPoint/Office type metadata and report which native drawing object families, AutoShapes, chart types, connectors, arrows, grouping, and layering operations are available. Also reports which capabilities this MCP exposes. This is read-only, does not launch PowerPoint, and never changes a deck.",
+    description: "Read the selected backend metadata and report which native or explicitly declared editable-composite object families, shapes, chart types, connectors, arrows, grouping, and layering operations are available. Also reports which capabilities this MCP exposes. This is read-only and never changes a deck.",
     inputSchema: {
       type: "object",
       properties: {
@@ -75,13 +116,14 @@ const tools = [
         include_chart_types: { type: "boolean", default: true, description: "Return the installed native chart type catalog." },
         include_shape_types: { type: "boolean", default: true, description: "Return native PowerPoint shape-kind metadata used during inspection." },
         include_api_methods: { type: "boolean", default: false, description: "Return the raw installed Shapes/Shape COM method names for advanced planning." },
+        host_application: { type: "string", enum: ["auto", "powerpoint", "wps"], default: "auto", description: "Choose Microsoft PowerPoint or WPS Presentation. Auto prefers Microsoft PowerPoint when available." },
       },
       additionalProperties: false,
     },
   },
   {
     name: "powerpoint_launch",
-    description: "Connect to the running Windows PowerPoint application or launch it, optionally opening a local .pptx file. PowerPoint remains visible so the user can watch native slide edits.",
+    description: "Connect to or open a presentation in Microsoft PowerPoint or WPS Presentation. A connected Mac PowerPoint Office.js task pane controls the current deck live; opening a file path uses COM or the safe OOXML working-copy backend because Office.js cannot open desktop files.",
     inputSchema: {
       type: "object",
       properties: {
@@ -90,6 +132,7 @@ const tools = [
         read_only: { type: "boolean", default: false },
         visible: { type: "boolean", default: true },
         maximize: { type: "boolean", default: true },
+        host_application: { type: "string", enum: ["auto", "powerpoint", "wps"], default: "auto" },
       },
       additionalProperties: false,
     },
@@ -101,6 +144,7 @@ const tools = [
       type: "object",
       properties: {
         maximize: { type: "boolean", default: true },
+        host_application: { type: "string", enum: ["auto", "powerpoint", "wps"], default: "auto" },
       },
       additionalProperties: false,
     },
@@ -209,7 +253,7 @@ const tools = [
   },
   {
     name: "powerpoint_add_image",
-    description: "Insert a tightly scoped local raster or SVG asset as a PowerPoint picture shape. A specific audit reason is mandatory; never use this for a whole panel containing text, boxes, arrows, tables, charts, labels, or other reconstructable native objects.",
+    description: "Insert a tightly scoped local raster or SVG asset as an editable PowerPoint picture object (a picture-filled shape in Office.js). A specific audit reason is mandatory; never use this for a whole panel containing text, boxes, arrows, tables, charts, labels, or other reconstructable native objects.",
     inputSchema: {
       type: "object",
       required: ["slide_index", "image_path", "left", "top", "width", "height", "raster_reason", "source_is_tightly_cropped", "atomic_raster_unit", "contains_reconstructable_content", "decomposition_note"],
@@ -261,7 +305,7 @@ const tools = [
   },
   {
     name: "powerpoint_add_connector",
-    description: "Connect two named native shapes on a slide with a PowerPoint connector that stays attached when shapes move.",
+    description: "Connect two named shapes. COM/OOXML use a PowerPoint connector that stays attached when shapes move; Office.js uses a named editable geometry-backed route because that API exposes no connection-site binding, and reports this limitation.",
     inputSchema: {
       type: "object",
       required: ["slide_index", "source_name", "target_name"],
@@ -371,7 +415,7 @@ const tools = [
   },
   {
     name: "powerpoint_add_chart",
-    description: "Add a native editable PowerPoint chart backed by embedded chart data. Use this for regular quantitative plots instead of screenshotting charts.",
+    description: "Add an editable regular chart. COM/OOXML create a native PowerPoint chart backed by embedded data; Office.js creates a named editable shape composite because the PowerPoint JavaScript API exposes no chart insertion. Never screenshot a reconstructable regular plot.",
     inputSchema: {
       type: "object",
       required: ["slide_index", "left", "top", "width", "height", "categories", "series"],
@@ -410,7 +454,7 @@ const tools = [
   },
   {
     name: "powerpoint_duplicate_shape",
-    description: "Duplicate a native PowerPoint shape, table, chart, group, or picture and give the duplicate a stable semantic name.",
+    description: "Duplicate an editable PowerPoint object and give it a stable semantic name. COM/OOXML can duplicate all supported object families; Office.js reconstructs tagged text/geometric shapes without flattening and asks callers to recreate unsupported families explicitly.",
     inputSchema: {
       type: "object",
       required: ["slide_index", "new_name"],
@@ -536,7 +580,7 @@ const tools = [
   },
   {
     name: "powerpoint_draw_sequence",
-    description: "Apply a paced sequence of native slide, text, shape, line, connector, table, chart, image, grouping, layering, and update operations. Each operation is a distinct PowerPoint update visible to the user.",
+    description: "Apply a paced sequence of native slide, text, shape, line, connector, table, chart, image, grouping, layering, and update operations. In the Office.js backend every operation is acknowledged after context.sync so it is visibly committed before the next operation.",
     inputSchema: {
       type: "object",
       required: ["operations"],
@@ -553,6 +597,8 @@ const tools = [
           },
         },
         step_delay_ms: { type: "integer", minimum: 0, maximum: 10000, default: 350 },
+        pacing_mode: { type: "string", enum: ["per_object", "checkpoint", "fast"], default: "per_object", description: "per_object preserves the requested delay after every context.sync; checkpoint delays only at checkpoint_size boundaries; fast uses no additional delay while still awaiting every context.sync." },
+        checkpoint_size: { type: "integer", minimum: 1, maximum: 100, default: 10 },
       },
       additionalProperties: false,
     },
@@ -641,8 +687,142 @@ function powershellExecutable() {
   return candidate && existsSync(candidate) ? candidate : "powershell.exe";
 }
 
-async function runBridge(action, args = {}) {
-  if (process.platform !== "win32") throw new Error("Live PowerPoint control currently requires Windows desktop PowerPoint.");
+let cachedOoxmlPython;
+
+async function ooxmlPythonExecutable() {
+  if (cachedOoxmlPython) return cachedOoxmlPython;
+  const candidates = [
+    process.env.SCIENTIFIC_ILLUSTRATOR_PYTHON,
+    path.join(SCRIPT_DIR, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python3"),
+    path.join(os.homedir(), ".cache", "codex-runtimes", "codex-primary-runtime", "dependencies", "python", "bin", "python3"),
+    process.platform === "win32" ? "python.exe" : "python3",
+    process.platform === "win32" ? "py.exe" : "/opt/homebrew/bin/python3",
+    process.platform === "win32" ? null : "/usr/local/bin/python3",
+  ].filter(Boolean);
+  const failures = [];
+  for (const candidate of candidates) {
+    try {
+      await execFileAsync(candidate, ["-c", "import pptx; print(pptx.__version__)"], { encoding: "utf8", maxBuffer: 1024 * 1024 });
+      cachedOoxmlPython = candidate;
+      return candidate;
+    } catch (error) {
+      failures.push(`${candidate}: ${String(error.message || error).split("\n")[0]}`);
+    }
+  }
+  throw new Error(`The PowerPoint/WPS OOXML backend requires Python with python-pptx. Run install.sh on macOS/Linux or set SCIENTIFIC_ILLUSTRATOR_PYTHON. Checked: ${failures.join("; ")}`);
+}
+
+async function runOoxmlBridge(action, args = {}) {
+  if (!existsSync(OOXML_BRIDGE_PATH)) throw new Error(`OOXML presentation bridge is missing: ${OOXML_BRIDGE_PATH}`);
+  const payload = Buffer.from(JSON.stringify({ action, arguments: args }), "utf8").toString("base64");
+  const executable = await ooxmlPythonExecutable();
+  try {
+    const { stdout } = await execFileAsync(executable, [OOXML_BRIDGE_PATH, payload], { encoding: "utf8", maxBuffer: MAX_BUFFER });
+    const text = stdout.trim();
+    if (!text) throw new Error("PowerPoint/WPS OOXML bridge returned no JSON.");
+    return JSON.parse(text);
+  } catch (error) {
+    const details = String(error.stderr || error.stdout || error.message || error).trim();
+    throw new Error(details || "PowerPoint/WPS OOXML bridge failed.");
+  }
+}
+
+let cachedWindowsPowerPointAvailable;
+
+async function windowsPowerPointAvailable() {
+  if (cachedWindowsPowerPointAvailable !== undefined) return cachedWindowsPowerPointAvailable;
+  if (process.platform !== "win32") return false;
+  try {
+    await execFileAsync("reg.exe", ["query", "HKCR\\PowerPoint.Application\\CLSID"], { encoding: "utf8", maxBuffer: 1024 * 1024 });
+    cachedWindowsPowerPointAvailable = true;
+  } catch {
+    cachedWindowsPowerPointAvailable = false;
+  }
+  return cachedWindowsPowerPointAvailable;
+}
+
+const MUTATING_ACTIONS = new Set([
+  "add_slide", "add_textbox", "add_shape", "add_image", "add_line", "add_connector", "add_table",
+  "update_table_cell", "update_table_layout", "add_chart", "duplicate_shape", "group_shapes", "ungroup_shape",
+  "set_z_order", "align_shapes", "distribute_shapes", "update_shape", "delete_shape", "activate_slide",
+]);
+const BACKEND_LOCKING_ACTIONS = new Set([...MUTATING_ACTIONS, "launch", "new_presentation", "save", "close_presentation", "quit_application"]);
+
+function requestedHost(args = {}) {
+  return String(args.host_application || process.env.SCIENTIFIC_ILLUSTRATOR_PPT_HOST || "auto").trim().toLowerCase();
+}
+
+async function officeJsStatus(waitForConnectionMs = 0) {
+  try {
+    await officeJsBridge.start();
+    return await officeJsBridge.waitForClient(waitForConnectionMs);
+  } catch (error) {
+    return { ...officeJsBridge.status(), connected: false, last_error: error.message };
+  }
+}
+
+function officeJsImageMime(filePath) {
+  const extension = path.extname(filePath).toLowerCase();
+  if (extension === ".jpg" || extension === ".jpeg") return "image/jpeg";
+  if (extension === ".gif") return "image/gif";
+  if (extension === ".svg") return "image/svg+xml";
+  if (extension === ".webp") return "image/webp";
+  return "image/png";
+}
+
+async function prepareOfficeJsArguments(action, args) {
+  const prepared = { ...args };
+  if (action === "add_image") {
+    const source = path.resolve(String(args.image_path || ""));
+    if (!path.isAbsolute(String(args.image_path || ""))) throw new Error("powerpoint_add_image requires an absolute image_path.");
+    if (!existsSync(source)) throw new Error(`Image file not found: ${source}`);
+    const cropRequested = ["crop_left_percent", "crop_top_percent", "crop_right_percent", "crop_bottom_percent", "crop_left_points", "crop_top_points", "crop_right_points", "crop_bottom_points"].some((key) => args[key] !== undefined);
+    if (args.source_is_tightly_cropped !== true || cropRequested) {
+      throw new Error("The Office.js live backend requires a pre-cropped atomic source image because PowerPoint ShapeFill.setImage does not expose crop controls. Crop the minimal visual field first and call powerpoint_add_image with source_is_tightly_cropped=true, or use the OOXML backend for PowerPoint crop properties.");
+    }
+    prepared.image_base64 = await fs.readFile(source, { encoding: "base64" });
+    prepared.image_mime_type = officeJsImageMime(source);
+  }
+  return prepared;
+}
+
+async function writeOfficeJsOutput(action, args, result) {
+  if (action === "export_slide_image") {
+    const outputPath = String(args.output_path || "");
+    if (!path.isAbsolute(outputPath)) throw new Error("powerpoint_export_slide_image requires an absolute output_path.");
+    if (existsSync(outputPath) && args.overwrite !== true) throw new Error(`Output exists: ${outputPath}`);
+    if (!result.image_base64) throw new Error("Office.js renderer returned no image data.");
+    await fs.mkdir(path.dirname(outputPath), { recursive: true });
+    await fs.writeFile(outputPath, Buffer.from(result.image_base64, "base64"));
+    const value = { ...result, output_path: outputPath };
+    delete value.image_base64;
+    return value;
+  }
+  if (action === "save" && args.output_path) {
+    const outputPath = String(args.output_path);
+    if (!path.isAbsolute(outputPath)) throw new Error("powerpoint_save requires an absolute output_path.");
+    if (existsSync(outputPath) && args.overwrite !== true) throw new Error(`Output exists: ${outputPath}`);
+    if (!result.file_base64) throw new Error("Office.js editable presentation export returned no PPTX data.");
+    await fs.mkdir(path.dirname(outputPath), { recursive: true });
+    await fs.writeFile(outputPath, Buffer.from(result.file_base64, "base64"));
+    const value = { ...result, output_path: outputPath, saved: true };
+    delete value.file_base64;
+    return value;
+  }
+  return result;
+}
+
+async function runOfficeJsBridge(action, args = {}) {
+  const prepared = await prepareOfficeJsArguments(action, args);
+  const result = await officeJsBridge.dispatch(action, prepared, {
+    waitForClientMs: Number(args.wait_for_officejs_ms || 0),
+    timeoutMs: ["save", "export_slide_image"].includes(action) ? 180000 : 60000,
+  });
+  return writeOfficeJsOutput(action, args, result);
+}
+
+async function runComBridge(action, args = {}) {
+  if (process.platform !== "win32") throw new Error("The PowerPoint COM backend is available only on Windows with desktop Microsoft PowerPoint.");
   const payload = Buffer.from(JSON.stringify({ action, arguments: args }), "utf8").toString("base64");
   try {
     const { stdout } = await execFileAsync(
@@ -657,6 +837,54 @@ async function runBridge(action, args = {}) {
     const details = String(error.stderr || error.stdout || error.message || error).trim();
     throw new Error(details || "PowerPoint bridge failed.");
   }
+}
+
+async function resolveBackend(action, args = {}) {
+  const host = requestedHost(args);
+  if (lockedBackend) return lockedBackend;
+  if (host === "wps") {
+    if (backendPreference === "officejs" || backendPreference === "com") throw new Error(`Backend ${backendPreference} cannot control WPS Presentation. Select ooxml or auto.`);
+    return "ooxml";
+  }
+  if (backendPreference === "officejs") {
+    const status = await officeJsStatus(Number(args.wait_for_officejs_ms || args.wait_for_connection_ms || 0));
+    if (!status.connected) throw new Error("Office.js was selected but its PowerPoint task pane is not connected. Prepare and trust the localhost certificate, sideload officejs/manifest.xml, open Scientific Illustrator Live in the current deck, and retry.");
+    return "officejs";
+  }
+  if (backendPreference === "com") {
+    if (!(await windowsPowerPointAvailable())) throw new Error("PowerPoint COM was selected but desktop Microsoft PowerPoint is not registered on Windows.");
+    return "com";
+  }
+  if (backendPreference === "ooxml") return "ooxml";
+  if (process.platform === "win32" && await windowsPowerPointAvailable()) return "com";
+  if (action === "new_presentation" || (action === "launch" && args.file_path)) return "ooxml";
+  if (process.platform === "darwin" || process.platform === "win32") {
+    const status = await officeJsStatus(Number(args.wait_for_officejs_ms || 0));
+    if (status.connected) return "officejs";
+  }
+  return "ooxml";
+}
+
+async function runBridge(action, args = {}) {
+  const backend = await resolveBackend(action, args);
+  let value;
+  if (backend === "officejs") value = await runOfficeJsBridge(action, args);
+  else if (backend === "com") value = await runComBridge(action, args);
+  else value = await runOoxmlBridge(action, args);
+  if (BACKEND_LOCKING_ACTIONS.has(action)) lockedBackend = backend;
+  if (MUTATING_ACTIONS.has(action)) mutationCount += 1;
+  if (value && typeof value === "object") {
+    value.backend_selection = {
+      selected: backend,
+      preference: backendPreference,
+      locked: lockedBackend,
+      mutation_count: mutationCount,
+    };
+    if (action === "status" || action === "capabilities") {
+      value.officejs_live = await officeJsStatus(0);
+    }
+  }
+  return value;
 }
 
 function sleep(ms) {
@@ -684,14 +912,16 @@ async function runSequence(args) {
     update_shape: "update_shape",
     activate_slide: "activate_slide",
   };
-  const delay = args.step_delay_ms ?? 350;
+  const requestedDelay = args.step_delay_ms ?? 350;
+  const pacingMode = args.pacing_mode || "per_object";
+  const checkpointSize = args.checkpoint_size || 10;
   const results = [];
   for (let index = 0; index < args.operations.length; index += 1) {
     const operation = { ...args.operations[index] };
     const type = operation.type;
     delete operation.type;
     if (type === "wait") {
-      const waitMs = Math.max(0, Math.min(10000, operation.ms ?? delay));
+      const waitMs = Math.max(0, Math.min(10000, operation.ms ?? requestedDelay));
       await sleep(waitMs);
       results.push({ index, type, waited_ms: waitMs });
       continue;
@@ -700,13 +930,51 @@ async function runSequence(args) {
     if (!action) throw new Error(`Unsupported sequence operation at index ${index}: ${type}`);
     operation.pause_after_ms = 0;
     results.push({ index, type, result: await runBridge(action, operation) });
+    const shouldDelay = pacingMode === "per_object" || (pacingMode === "checkpoint" && ((index + 1) % checkpointSize === 0 || index === args.operations.length - 1));
+    const delay = pacingMode === "fast" || !shouldDelay ? 0 : requestedDelay;
     if (delay > 0) await sleep(delay);
   }
-  return { operations_applied: results.length, results };
+  return {
+    operations_applied: results.length,
+    pacing_mode: pacingMode,
+    step_delay_ms: requestedDelay,
+    context_sync_acknowledged_per_operation: lockedBackend === "officejs",
+    results,
+  };
 }
 
 async function handleTool(name, args = {}) {
   if (name === "powerpoint_draw_sequence") return { value: await runSequence(args) };
+  if (name === "powerpoint_officejs_status") {
+    const value = await officeJsStatus(Number(args.wait_for_connection_ms || 0));
+    value.setup = {
+      prepare_command: "node plugins/scientific-illustrator/scripts/officejs-setup.mjs prepare",
+      mac_sideload_command: "node plugins/scientific-illustrator/scripts/officejs-setup.mjs sideload",
+      certificate_trust_is_manual: true,
+      manifest_path: path.resolve(SCRIPT_DIR, "..", "officejs", "manifest.xml"),
+    };
+    return { value };
+  }
+  if (name === "powerpoint_set_backend") {
+    const requested = String(args.backend || "auto").toLowerCase();
+    if (!VALID_BACKENDS.has(requested)) throw new Error(`Unknown backend: ${requested}`);
+    if (lockedBackend && requested !== lockedBackend && requested !== backendPreference) {
+      throw new Error(`This presentation session is already locked to ${lockedBackend}. Start a new Codex task before switching backends so live and file-backed objects are never mixed.`);
+    }
+    if (requested === "officejs") {
+      const status = await officeJsStatus(Number(args.wait_for_connection_ms || 0));
+      if (!status.connected) throw new Error("Office.js task pane is not connected. Open Scientific Illustrator Live in the current PowerPoint deck and retry.");
+    }
+    backendPreference = requested;
+    return {
+      value: {
+        backend_preference: backendPreference,
+        locked_backend: lockedBackend,
+        mutation_count: mutationCount,
+        officejs_live: requested === "officejs" ? await officeJsStatus(0) : officeJsBridge.status(),
+      },
+    };
+  }
   const actionMap = {
     powerpoint_status: "status",
     powerpoint_get_capabilities: "capabilities",
@@ -787,7 +1055,7 @@ async function handleMessage(message) {
       protocolVersion: SUPPORTED_PROTOCOLS.has(requested) ? requested : "2025-06-18",
       capabilities: { tools: { listChanged: false } },
       serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
-      instructions: "On Windows, control the active visible PowerPoint presentation through PowerPoint's native COM object model. Use the Designer -> Drawer -> Reviewer -> Corrector loop. Call powerpoint_get_capabilities before reconstruction, keep every reconstructable item native, require every picture to be an atomic irreducible raster unit, and run powerpoint_audit_figure after each region and the whole slide. Use exact alignment/distribution, table layout, text-fit, and line-clearance tools before declaring a gate passed. Never use OS-level mouse or keyboard automation.",
+      instructions: "Control Microsoft PowerPoint or WPS Presentation through the platform-selected backend. Windows PowerPoint prefers COM. Mac PowerPoint prefers a connected Office.js task pane and waits for context.sync after every object so drawing is visible; otherwise it reports and uses the file-backed OOXML fallback. WPS uses OOXML. Call powerpoint_status, powerpoint_officejs_status when live Mac drawing is requested, and powerpoint_get_capabilities before editing. Never mix live and file-backed objects in one session, never use OS-level mouse or keyboard automation, preserve reconstructable content as native objects, require atomic raster declarations, and run structure plus renderer review after each region and the whole slide.",
     });
   }
   if (method === "ping") return rpcResult(id, {});
