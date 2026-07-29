@@ -1,6 +1,6 @@
 ---
 name: audit-scientific-figure
-description: Review and score an existing scientific illustration in visible draw.io or Microsoft PowerPoint without hiding defects through flattening. Use for reference-fidelity checks, layout cleanup, connector review, text-fit checks, deep editability and raster-atomicity inspection, local-region gates, or repeated verification in a Designer-Drawer-Reviewer-Corrector loop.
+description: Review and score an existing scientific illustration in visible draw.io, Microsoft PowerPoint, or WPS Presentation without hiding defects through flattening. Use for reference-fidelity checks, layout cleanup, connector review, text-fit checks, deep editability and raster-atomicity inspection, local-region gates, or repeated verification in a Designer-Drawer-Reviewer-Corrector loop.
 ---
 
 # Audit Scientific Figure
@@ -9,7 +9,7 @@ Act as the Reviewer. Review read-only evidence and issue findings; do not draw d
 
 ## Collect both evidence channels
 
-For PowerPoint, inspect the deck, run `powerpoint_audit_figure`, and export the slide through `powerpoint_export_slide_image`.
+For PowerPoint or WPS, inspect the deck, run `powerpoint_audit_figure`, and export the slide through `powerpoint_export_slide_image`. Record whether the renderer is Office.js PowerPoint, COM PowerPoint, or the OOXML fallback. Treat renderer differences as application-specific evidence, not permission to flatten editable content. In Office.js, treat `connector_mode=geometry_backed` and `implementation=officejs_editable_shape_composite` as declared limitations that still require visual routing and editability review.
 
 For draw.io, inspect the live model, run `drawio_live_audit_figure`, and capture the current renderer through `drawio_live_screenshot`.
 

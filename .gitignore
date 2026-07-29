@@ -1,6 +1,9 @@
 .DS_Store
 Thumbs.db
 node_modules/
+.venv/
+__pycache__/
+*.pyc
 *.log
 .drawio-live-mcp/
 *.pptx

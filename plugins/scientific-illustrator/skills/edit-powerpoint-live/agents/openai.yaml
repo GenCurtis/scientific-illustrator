@@ -1,4 +1,4 @@
 interface:
-  display_name: "PowerPoint Scientific Drawer"
-  short_description: "Build and verify editable scientific figures live in PowerPoint"
-  default_prompt: "Use $edit-powerpoint-live to draw this figure region by region in PowerPoint and pass every review gate."
+  display_name: "Live PowerPoint and WPS Scientific Drawer"
+  short_description: "Draw editable figures with COM, Office.js context.sync, or OOXML"
+  default_prompt: "Use $edit-powerpoint-live to select the safest live backend, draw this figure region by region in PowerPoint or WPS, and pass every review gate."

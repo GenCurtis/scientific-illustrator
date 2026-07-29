@@ -1,23 +1,23 @@
 ---
 name: recreate-scientific-figure
-description: Recreate a supplied scientific figure, graphical abstract, workflow, model diagram, or multi-panel schematic as a maximally editable illustration in visible draw.io or Microsoft PowerPoint. Use when a PNG/JPEG/SVG/PDF reference must be rebuilt panel by panel through a Designer, Drawer, Reviewer, and Corrector loop with backend capability detection, atomic raster decomposition, local checks, and repeated whole-figure verification.
+description: Recreate a supplied scientific figure, graphical abstract, workflow, model diagram, or multi-panel schematic as a maximally editable illustration in visible draw.io, Microsoft PowerPoint, or WPS Presentation. Use when a PNG/JPEG/SVG/PDF reference must be rebuilt panel by panel through a Designer, Drawer, Reviewer, and Corrector loop with backend capability detection, atomic raster decomposition, local checks, and repeated whole-figure verification.
 ---
 
 # Recreate Scientific Figure
 
-Coordinate one backend-neutral four-role protocol. Keep the roles logically separate even when one agent performs all four. Let the user choose draw.io or PowerPoint; the choice changes the implementation, never the quality contract.
+Coordinate one backend-neutral four-role protocol. Keep the roles logically separate even when one agent performs all four. Let the user choose draw.io, Microsoft PowerPoint, or WPS Presentation; the choice changes the implementation, never the quality contract.
 
-Use `$recreate-scientific-figure-in-drawio` as the draw.io Drawer adapter and `$edit-powerpoint-live` as the PowerPoint Drawer adapter. Use `$audit-scientific-figure` as the Reviewer and `$correct-scientific-figure` as the Corrector.
+Use `$recreate-scientific-figure-in-drawio` as the draw.io Drawer adapter and `$edit-powerpoint-live` as the PowerPoint/WPS Drawer adapter. Use `$audit-scientific-figure` as the Reviewer and `$correct-scientific-figure` as the Corrector.
 
 ## Preserve backend parity
 
 Require both backends to deliver the same semantic capabilities:
 
 - editable text, shapes, symbols, panels, lines, arrows, and attached connectors;
-- editable tables and regular charts, native in PowerPoint and editable composites in draw.io;
+- editable tables and regular charts: native in COM/OOXML PowerPoint, editable shape composites in Office.js PowerPoint or draw.io when their live APIs cannot insert a native chart;
 - stable object names/ids, duplication, grouping, z-order, exact alignment, and equal distribution;
 - one picture object per irreducible raster field, with all reconstructable overlays rebuilt separately;
-- visible object-by-object construction;
+- visible object-by-object construction in draw.io, PowerPoint COM, and connected PowerPoint Office.js; explicitly labeled file refresh in OOXML fallback mode;
 - structure audit plus renderer audit after every region and after the whole figure;
 - an editable source file and requested exports.
 
@@ -38,7 +38,7 @@ Produce a `reconstruction_spec` before drawing. It must contain region ids, obje
 
 ## Drawer handoff
 
-1. Detect the selected backend's current capabilities before choosing objects.
+1. Detect the selected backend's current capabilities before choosing objects. For live Mac PowerPoint, require a connected `officejs-context-sync` task pane and lock it with `powerpoint_set_backend` before drawing; otherwise report the OOXML fallback instead of promising a live animation.
 2. Connect or create an isolated editable document and inspect its structure.
 3. Establish canvas/slide size, panel skeleton, alignment anchors, spacing tokens, and connector lanes.
 4. Draw exactly one logical region from back to front with stable semantic names and nonzero pacing.

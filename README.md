@@ -2,14 +2,21 @@
 
 [中文说明](#中文说明) · [English guide](#english-guide) · [MIT License](LICENSE)
 
-一个让 Codex 在 **Microsoft PowerPoint 或 draw.io 桌面端**逐步绘制、复刻、审查并修正科研插图的插件。目标不是把参考图整张贴进画布，而是尽可能还原为可编辑的文字、形状、连接线、表格、图表和原子图像素材。
+一个让 Codex 在 **Microsoft PowerPoint、WPS 演示或 draw.io 桌面端**逐步绘制、复刻、审查并修正科研插图的插件。目标不是把参考图整张贴进画布，而是尽可能还原为可编辑的文字、形状、连接线、表格、图表和原子图像素材。
 
 > **项目关系：本项目是上一研究项目 [`icebird1998/drawio-scientific-illustrator`](https://github.com/icebird1998/drawio-scientific-illustrator) 的集成升级优化版本。**前代项目聚焦 draw.io；本项目在保留并升级 draw.io 能力的同时，加入 PowerPoint 原生对象控制，并让两种软件遵循同一套设计、绘图、审查、纠正和可编辑性验收标准。
 
 **开发人：科研up主:进击的土博**<br>
 GitHub: [@icebird1998](https://github.com/icebird1998)
 
-> 当前版本：`1.3.0`。PowerPoint 实时控制面向 Windows 桌面版 Microsoft PowerPoint；draw.io 支持 Windows，并包含 macOS/Linux 的可执行文件发现逻辑，实际表现会受 draw.io/Electron 打包方式影响。
+> 当前版本：`1.5.0`。Windows Microsoft PowerPoint 使用 COM 实时控制；macOS Microsoft PowerPoint 在任务窗格连接后使用 Office.js 与 `context.sync()` 真正逐对象刷新，未连接时回退到安全的 OOXML 工作副本；Windows/macOS WPS 演示继续使用标准 PPTX 原生对象后端。
+
+### 版本发布与旧版回退
+
+- 最新稳定版：[`v1.5.0`](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.5.0)，加入 Windows/macOS 双平台下 draw.io、Microsoft PowerPoint 与 WPS 演示的统一适配，以及 Mac PowerPoint Office.js 实时后端；
+- 旧版归档：[`v1.3.0`](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.3.0)，保留首次公开发布时的 Windows PowerPoint COM 与 draw.io 实现；
+- 每个公开版本使用独立且不可移动的 Git 标签和 GitHub Release。发布新版不会覆盖、重写或删除旧版本，旧版源码压缩包会继续由 GitHub 提供；
+- `main` 分支和一键安装器默认跟随最新版。如需回退，请克隆仓库后执行 `git checkout v1.3.0`，再从该目录注册 Marketplace 并安装插件。
 
 ---
 
@@ -31,7 +38,7 @@ GitHub: [@icebird1998](https://github.com/icebird1998)
 
 | 项目 | 上一研究项目 | Scientific Illustrator |
 |---|---|---|
-| 目标软件 | draw.io | PowerPoint + draw.io |
+| 目标软件 | draw.io | Microsoft PowerPoint + WPS 演示 + draw.io |
 | 绘制策略 | draw.io 实时图模型 | 双后端统一语义、分别映射原生对象 |
 | 角色流程 | 重绘与检查 | 设计者 → 绘图者 → 审查者 → 纠正者闭环 |
 | 可编辑性 | 优先使用 draw.io 图元 | 深层可编辑性审计 + 原子栅格约束 |
@@ -76,17 +83,30 @@ GitHub: [@icebird1998](https://github.com/icebird1998)
 3. 从 Codex 捆绑运行环境以外启动 MCP 时，需要可用的 Node.js，推荐 Node.js 22 或更高版本；
 4. 安装后重启 Codex，并新建任务以加载新的 Skill 与 MCP 工具。
 
-#### PowerPoint
+### Windows/macOS × 三软件兼容矩阵
 
-- Windows；
-- Microsoft PowerPoint 桌面版；
-- PowerPoint 不应处于模态对话框、受保护视图或被其他操作阻塞的状态；
-- 插件通过本机 PowerShell 和 Office COM 对象模型控制 PowerPoint，不使用系统鼠标键盘模拟。
+| 目标软件 | Windows | macOS |
+|---|---|---|
+| draw.io Desktop | 支持；通过本机调试通道直接调用可见画布的 graph API，属于主要测试路径 | 支持；使用同一 graph API 和可编辑 cell/edge，对具体 Electron 版本仍应执行启动与导出烟测 |
+| Microsoft PowerPoint | 支持；使用 Office COM 直接控制当前演示文稿，逐对象实时刷新 | 支持；任务窗格连接时使用 Office.js `PowerPoint.run()` + `context.sync()`，未连接时回退到可编辑 OOXML 工作副本 |
+| WPS 演示 | 支持；使用标准可编辑 PPTX/OOXML 工作副本并在 WPS 中打开 | 支持；使用同一标准可编辑 PPTX/OOXML 工作副本并在 WPS 中打开 |
+
+六种组合都是正式兼容目标，但后端体验不同：PowerPoint COM 和已连接的 Mac Office.js 是当前画布实时控制；WPS 是文件式可编辑后端，不应宣称为 COM/Office.js 式实时控制。字体、SVG、图表主题和应用版本差异仍需在交付目标软件中做最终渲染检查。
+
+#### PowerPoint / WPS 演示
+
+- Windows Microsoft PowerPoint：使用本机 PowerShell 和 Office COM 对象模型进行最快的实时控制；
+- macOS Microsoft PowerPoint：优先使用本机 HTTPS 命令桥和 Office.js 任务窗格，通过 `PowerPoint.run()` 与 `context.sync()` 直接更新当前幻灯片；任务窗格未连接时使用 `python-pptx` OOXML 工作副本兜底；
+- Windows/macOS WPS 演示：使用同一标准 PPTX 原生对象后端，并由 WPS 打开；
+- Office.js 实时后端需要本机 OpenSSL 生成 localhost 证书、用户手动确认信任，以及旁载仓库内的加载项 manifest；插件不会自动修改系统证书信任；
+- 文件后端要求可用的 Python 3 与 `python-pptx`。安装器会优先复用 Codex 捆绑环境，否则建立插件本地虚拟环境；
+- PNG/PDF 预览优先使用本机 LibreOffice 与 Poppler；
+- 不使用系统鼠标键盘模拟。目标应用处于模态对话框时，应先关闭对话框。
 
 #### draw.io
 
 - [draw.io Desktop](https://www.drawio.com/)；
-- Windows 为主要测试平台；macOS/Linux 为尽力支持；
+- Windows 与 macOS 均为支持平台；Windows 是主要测试路径，macOS 使用相同 graph API，并应针对已安装的 Electron 版本执行启动、保存和导出烟测；
 - 插件通过仅限本机的调试通道调用 draw.io 自身 graph API，不先生成 XML 冒充实时绘制。
 
 ### 安装
@@ -111,7 +131,7 @@ $p="$env:TEMP\scientific-illustrator-install.ps1"; Invoke-WebRequest https://raw
 
 #### 方法三：macOS/Linux 一键安装
 
-该方式可安装 draw.io 能力；PowerPoint 实时控制仍要求 Windows：
+该方式可安装 draw.io、Mac Microsoft PowerPoint 和 Mac WPS 演示能力：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/icebird1998/scientific-illustrator/main/install.sh | bash
@@ -139,6 +159,26 @@ codex plugin add scientific-illustrator@scientific-illustrator-tools
 
 安装后请重启 Codex，并创建一个新任务。复杂参考图建议使用具备较强视觉理解与推理能力的模型，并为多轮局部审查预留足够时间。
 
+### Mac PowerPoint：启用真正逐对象绘制
+
+普通插件安装会保留 OOXML 兜底，但 Office.js 实时任务窗格需要额外旁载一次。进入仓库后执行：
+
+```bash
+node plugins/scientific-illustrator/scripts/officejs-setup.mjs prepare
+openssl x509 -in "$HOME/.codex/scientific-illustrator/officejs/localhost.crt" -text -noout
+node plugins/scientific-illustrator/scripts/officejs-setup.mjs sideload
+```
+
+这些命令会生成只供 `https://localhost:17645` 使用的证书，并把已审查的 `officejs/manifest.xml` 复制到 Mac PowerPoint 的 WEF 加载项目录；不会更改证书信任。随后：
+
+1. 在 macOS“钥匙串访问”中打开并检查 `~/.codex/scientific-illustrator/officejs/localhost.crt`，由你手动设置信任；
+2. 完全退出并重新打开 Microsoft PowerPoint；
+3. 在 Codex 新任务中选择 Scientific Illustrator，先要求它调用一次 `powerpoint_officejs_status`，启动本机 HTTPS 桥；
+4. 打开要绘制的空白或目标演示文稿，在 **插入 → 我的加载项** 中打开 **Scientific Illustrator Live** 并保持任务窗格开启；
+5. 再调用一次 `powerpoint_officejs_status`。只有返回 `connected=true` 且 `backend=officejs-context-sync` 后才开始绘制。
+
+证书、私钥和会话令牌只用于本机回环连接。若不希望旁载加载项，可以跳过本节，Mac PowerPoint 会继续使用已有的 OOXML 可编辑文件后端。
+
 ### 从旧项目迁移
 
 旧项目会继续保留，不会被本项目覆盖。由于两个插件都包含 draw.io 工具，建议迁移时在 Codex 插件设置中停用或卸载 `drawio-scientific-illustrator`，再启用 `scientific-illustrator`，避免重复工具造成选择歧义。确认新项目工作正常后，再删除旧项目的本地克隆。
@@ -161,13 +201,28 @@ codex plugin add scientific-illustrator@scientific-illustrator-tools
 
 > `@personal` 是个人 Marketplace 安装的插件链接。若你从本仓库 Marketplace 安装后插件显示在其他来源下，请在 Codex 输入框中直接选择 **Scientific Illustrator**；正文提示词保持不变。
 
-### PowerPoint 提示词
+### PowerPoint / WPS 演示提示词
+
+如需强制指定应用，在第一句写“使用 Mac PowerPoint”“使用 Windows PowerPoint”“使用 Mac WPS”或“使用 Windows WPS”。插件会把它映射为 `host_application=powerpoint` 或 `host_application=wps`。未指定时使用 `auto`，优先 Microsoft PowerPoint。
+
+#### Mac PowerPoint：实时逐对象复刻
+
+```text
+[@scientific-illustrator](plugin://scientific-illustrator@personal)
+使用 Scientific Illustrator，在当前 Mac PowerPoint 中复刻这张参考图。开始前必须调用
+powerpoint_officejs_status，确认 connected=true，再用 powerpoint_set_backend 将本次任务
+锁定为 officejs；如果任务窗格未连接就暂停并告诉我，不要回退后仍声称是实时绘制。
+使用 powerpoint_draw_sequence 的 per_object 模式，每个对象完成 context.sync() 后再继续。
+优先使用可编辑文字、形状、表格和规整的几何箭头；Office.js 无法原生创建的连接符或图表
+必须明确标为可编辑组合对象。只有预先紧密裁切的最小原子图像才能插入。每完成一个区域
+导出当前幻灯片、与原图比较并修正，最后做全局检查，保存可编辑 PPTX 和预览图。
+```
 
 #### 有参考图：最大程度可编辑复刻
 
 ```text
 [@scientific-illustrator](plugin://scientific-illustrator@personal)
-使用插件在 PowerPoint 中复刻我上传的参考图。先连接当前 PowerPoint，调用状态、
+使用插件在 PowerPoint 或 WPS 演示中复刻我上传的参考图。先连接目标应用，调用状态、
 能力检测和结构检查工具；若没有演示文稿则新建。优先使用 PowerPoint 原生可编辑的
 文字、形状、连接符、表格和图表。只有无法用原生对象可靠表达的最小语义区域才允许
 抠图插入，并继续检查它是否还能拆得更细。按面板逐步绘制，每完成一个局部就同时做
@@ -230,7 +285,20 @@ codex plugin add scientific-illustrator@scientific-illustrator-tools
 
 ### 典型工具流程
 
-PowerPoint 通常执行：
+Mac PowerPoint Office.js 实时模式执行：
+
+```text
+powerpoint_officejs_status
+→ powerpoint_set_backend（officejs）
+→ powerpoint_status + powerpoint_get_capabilities
+→ powerpoint_inspect
+→ powerpoint_draw_sequence（per_object，每步等待 context.sync）
+→ powerpoint_audit_figure + powerpoint_export_slide_image
+→ 审查 / 纠正 / 再检查
+→ powerpoint_save（导出当前可编辑 PPTX）
+```
+
+Windows COM 或 PowerPoint/WPS OOXML 模式通常执行：
 
 ```text
 powerpoint_status
@@ -284,13 +352,28 @@ PowerShell 示例：
 $env:DRAWIO_PATH = "D:\Apps\draw.io\draw.io.exe"
 ```
 
-PowerPoint 不需要配置网络端口；它使用本机 Office COM。若连接失败，先关闭 PowerPoint 的弹窗或受保护视图，再重试状态检查。
+Windows Microsoft PowerPoint 使用本机 Office COM；WPS 和 Mac PowerPoint 的兜底后端使用本地 PPTX 工作副本。Mac PowerPoint Office.js 模式会在 `127.0.0.1:17645` 开启 HTTPS 回环端点，只接受带随机会话令牌的本机任务窗格连接，不监听公网地址。若连接失败，先关闭目标应用的弹窗或受保护视图，再重试状态检查。
+
+演示文稿后端还支持：
+
+| 环境变量 | 作用 | 默认值 |
+|---|---|---|
+| `SCIENTIFIC_ILLUSTRATOR_PPT_HOST` | `auto`、`powerpoint` 或 `wps` | `auto` |
+| `SCIENTIFIC_ILLUSTRATOR_PPT_BACKEND` | `auto`、`officejs`、`com` 或 `ooxml` | `auto` |
+| `SCIENTIFIC_ILLUSTRATOR_PYTHON` | 显式指定含 `python-pptx` 的 Python | 自动检测 |
+| `SCIENTIFIC_ILLUSTRATOR_OFFICEJS_PORT` | Office.js 本机 HTTPS 端口；修改后还需同步修改 manifest | `17645` |
+| `SCIENTIFIC_ILLUSTRATOR_OFFICEJS_CERT` | 显式指定 localhost 证书 | `~/.codex/scientific-illustrator/officejs/localhost.crt` |
+| `SCIENTIFIC_ILLUSTRATOR_OFFICEJS_KEY` | 显式指定 localhost 私钥 | `~/.codex/scientific-illustrator/officejs/localhost.key` |
+| `WPS_PRESENTATION_PATH` | Windows 上显式指定 `wpp.exe` 或 `wpsoffice.exe` | 自动检测 |
+| `SCIENTIFIC_ILLUSTRATOR_POWERPOINT_SYNC` | 设为 `0` 时只更新工作副本，不自动打开应用 | `1` |
 
 ### 常见问题
 
 - **插件安装后不可见**：重启 Codex，并新建任务；旧任务不会自动加载新工具。
 - **`node` 不可用**：安装 Node.js 22+，或确认 Codex 捆绑运行环境可供插件使用。
-- **PowerPoint 连接失败**：确认使用 Windows 桌面版 PowerPoint，并关闭模态对话框、受保护视图或卡住的演示文稿。
+- **PowerPoint/WPS 连接失败**：先调用状态工具确认 `host_application` 和 `backend`。Windows Microsoft PowerPoint 检查 COM 与受保护视图；Mac PowerPoint/WPS 检查应用路径和 `python-pptx`。
+- **Mac PowerPoint 看不到逐对象过程**：确认任务窗格仍打开，`powerpoint_officejs_status.connected=true`，并在第一项绘制操作前调用 `powerpoint_set_backend(officejs)`；若结果是 `python-pptx-ooxml+application-reload`，当前使用的是文件刷新兜底而非实时后端。
+- **任务窗格显示证书或网络错误**：检查 localhost 证书是否由用户手动信任、端口 `17645` 是否被占用，并在 Codex 中先调用 `powerpoint_officejs_status` 启动桥接器后重新打开加载项。
 - **draw.io 找不到**：安装桌面版，或设置 `DRAWIO_PATH`。
 - **draw.io graph 未就绪**：关闭插件此前启动但已失效的 draw.io 窗口后重试。
 - **旧插件与新插件同时出现**：停用旧的 `drawio-scientific-illustrator`，只保留新插件。
@@ -311,7 +394,11 @@ scientific-illustrator/
 │  │  ├─ live-server.mjs          # draw.io 实时 MCP
 │  │  ├─ server.mjs               # draw.io 文件检查与导出 MCP
 │  │  ├─ powerpoint-server.mjs    # PowerPoint MCP
-│  │  └─ powerpoint-bridge.ps1    # PowerPoint COM 桥接
+│  │  ├─ powerpoint-bridge.ps1    # Windows Microsoft PowerPoint COM 桥接
+│  │  ├─ powerpoint-mac-bridge.py # Mac PowerPoint 与跨平台 WPS OOXML 桥接
+│  │  ├─ officejs-bridge.mjs      # localhost HTTPS 命令桥与逐步确认
+│  │  └─ officejs-setup.mjs       # 证书生成和 Mac manifest 旁载（不修改信任）
+│  ├─ officejs/                    # PowerPoint Office.js manifest 与任务窗格
 │  └─ skills/                     # 设计、双端绘图、审查与纠正流程
 ├─ scripts/                       # 仓库校验与 MCP 冒烟测试
 ├─ install.ps1
@@ -321,7 +408,8 @@ scientific-illustrator/
 ### 安全与隐私
 
 - draw.io 调试端点只绑定 `127.0.0.1`；
-- PowerPoint 使用本机 COM，不开放公网服务；
+- Windows Microsoft PowerPoint 使用本机 COM；Mac PowerPoint Office.js 桥只绑定 `127.0.0.1`、使用 HTTPS 和随机令牌；Mac/WPS OOXML 使用本地 PPTX 工作副本；所有演示文稿后端均不开放公网服务；
+- Office.js 设置脚本只生成证书和旁载 manifest，不会自动修改 macOS 钥匙串信任；
 - 不使用系统级鼠标键盘自动化；
 - 插件不包含遥测或托管后端；
 - 参考图和文档是否进入模型上下文取决于 Codex 与模型提供商设置，详见 [PRIVACY.md](PRIVACY.md)；
@@ -329,7 +417,10 @@ scientific-illustrator/
 
 ### 已知限制
 
-- PowerPoint 实时控制依赖 Windows 与桌面版 Microsoft PowerPoint；
+- Windows PowerPoint COM 提供最完整的原生对象模型；连接任务窗格后的 Mac PowerPoint 可以真正逐对象刷新，未连接时和 WPS 一样使用较慢的文件级 OOXML 刷新；
+- PowerPoint Office.js 当前不公开线条箭头端点、连接点绑定或原生图表创建。实时后端会把箭头/连接线和常规图表构造成命名、可编辑的几何组合并明确报告；若必须使用数据驱动的原生图表或真正附着连接符，应在绘制前选择 COM/OOXML；
+- Office.js 的 `ShapeFill.setImage` 不公开图片裁切参数，因此实时模式只接受已经紧密裁切的原子图像；
+- WPS 与 Microsoft PowerPoint 的字体度量、图表主题和 SVG 渲染可能有差异，最终预览必须在目标应用中检查；
 - 显微照片、复杂纹理、热图等连续栅格内容不能被无损转换成原生矢量对象，插件会尽量把它们限制在最小语义区域；
 - 参考图分辨率、字体可用性和目标软件渲染差异会影响像素级一致性；
 - “审查者没有问题”指在当前证据、阈值和可复现检查范围内通过，不代表数学意义上的绝对一致。
@@ -340,16 +431,23 @@ scientific-illustrator/
 
 ### Overview
 
-Scientific Illustrator is a Codex plugin for building, recreating, reviewing, and correcting scientific figures live in either Microsoft PowerPoint or draw.io Desktop. It prioritizes native editable objects over flattened screenshots.
+Scientific Illustrator is a Codex plugin for building, recreating, reviewing, and correcting scientific figures in Microsoft PowerPoint, WPS Presentation, or draw.io Desktop. It prioritizes native editable objects over flattened screenshots.
 
 This project is the **integrated, upgraded, and optimized successor** to [`icebird1998/drawio-scientific-illustrator`](https://github.com/icebird1998/drawio-scientific-illustrator). It preserves and expands the draw.io implementation, adds native PowerPoint control, and applies one shared quality contract to both backends.
 
 **Developer: 科研up主:进击的土博**<br>
 GitHub: [@icebird1998](https://github.com/icebird1998)
 
+### Versioned releases and rollback
+
+- Latest stable release: [`v1.5.0`](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.5.0), with the Windows/macOS draw.io, Microsoft PowerPoint, and WPS compatibility layer plus live Mac PowerPoint Office.js drawing;
+- Archived first public release: [`v1.3.0`](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.3.0), preserving the original Windows PowerPoint COM and draw.io implementation;
+- Every public version has an independent immutable Git tag and GitHub Release. Publishing a new version does not overwrite or delete the source archives for an older version;
+- `main` and the one-command installers track the newest release. To roll back, clone the repository, run `git checkout v1.3.0`, then register and install the plugin from that checkout.
+
 ### Core behavior
 
-- The user chooses PowerPoint or draw.io; the plugin automatically selects the required skills.
+- The user chooses Microsoft PowerPoint, WPS Presentation, or draw.io; the plugin automatically selects the required skills.
 - The Designer establishes structure, layout, visual grammar, and connector lanes.
 - The Drawer inventories backend capabilities and creates native editable objects panel by panel.
 - The Reviewer checks rendered fidelity, layout, connector clearance, text fit, structure, and deep editability.
@@ -357,17 +455,29 @@ GitHub: [@icebird1998](https://github.com/icebird1998)
 - Local review gates run after each region, followed by repeated whole-figure review.
 - Raster images are allowed only for the smallest region that cannot be reproduced reliably with native objects.
 
-PowerPoint uses native text boxes, AutoShapes, connectors, tables, charts, groups, and pictures through the Windows Office COM model. draw.io uses native graph cells, edges, editable table/chart composites, groups, and image cells through draw.io's graph API. The representations differ; the expected semantic result and acceptance gate do not.
+Windows Microsoft PowerPoint uses native objects through Office COM. On macOS, a connected Scientific Illustrator Office.js task pane updates the current PowerPoint slide object by object and acknowledges every `context.sync()`; the isolated standard-PPTX OOXML working copy remains the fallback. WPS Presentation uses the OOXML backend on Windows and macOS. draw.io uses native graph cells and editable composites through its graph API. The representations differ; the expected semantic result and acceptance gate do not.
 
 ### Requirements
 
 1. Codex desktop or Codex CLI with plugin support;
 2. Git;
 3. Node.js 22+ when the bundled Codex runtime is not available;
-4. For PowerPoint: Windows and desktop Microsoft PowerPoint;
-5. For draw.io: [draw.io Desktop](https://www.drawio.com/).
+4. For presentations: desktop Microsoft PowerPoint or WPS Presentation on Windows/macOS; the file-backed backend requires Python 3 plus `python-pptx`;
+5. For live Mac PowerPoint: OpenSSL, a user-reviewed and manually trusted localhost certificate, and the sideloaded Office.js manifest;
+6. For preview rendering in file-backed mode: local LibreOffice and Poppler are recommended;
+7. For draw.io: [draw.io Desktop](https://www.drawio.com/).
 
 Restart Codex and open a new task after installation.
+
+### Windows/macOS × three-application matrix
+
+| Application | Windows | macOS |
+|---|---|---|
+| draw.io Desktop | Supported through the visible desktop graph API; primary validation path | Supported through the same graph API and editable cells/edges; run launch and export smoke tests against the installed Electron build |
+| Microsoft PowerPoint | Supported through live Office COM control of the current presentation | Supported through live Office.js `PowerPoint.run()` + `context.sync()` when the task pane is connected, with editable OOXML fallback |
+| WPS Presentation | Supported through a standard editable PPTX/OOXML working copy opened in WPS | Supported through the same standard editable PPTX/OOXML working copy opened in WPS |
+
+All six combinations are compatibility targets, but their interaction models differ. PowerPoint COM and connected Mac Office.js update the current canvas live. WPS is a file-backed editable workflow and is not described as COM/Office.js-style live control. Always perform the final renderer check in the target application because fonts, SVG, chart themes, and application versions can differ.
 
 ### Install
 
@@ -385,7 +495,7 @@ Windows one-command installer (review [`install.ps1`](install.ps1) first):
 $p="$env:TEMP\scientific-illustrator-install.ps1"; Invoke-WebRequest https://raw.githubusercontent.com/icebird1998/scientific-illustrator/main/install.ps1 -OutFile $p; powershell -ExecutionPolicy Bypass -File $p
 ```
 
-macOS/Linux installer for draw.io support (PowerPoint live control still requires Windows):
+macOS/Linux installer for draw.io, Mac Microsoft PowerPoint, and Mac WPS Presentation support:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/icebird1998/scientific-illustrator/main/install.sh | bash
@@ -402,6 +512,16 @@ codex plugin add scientific-illustrator@scientific-illustrator-tools
 
 On PowerShell, replace `"$(pwd)"` with `(Get-Location).Path`.
 
+To enable real object-by-object drawing in Mac PowerPoint, run these commands from the repository after installation:
+
+```bash
+node plugins/scientific-illustrator/scripts/officejs-setup.mjs prepare
+openssl x509 -in "$HOME/.codex/scientific-illustrator/officejs/localhost.crt" -text -noout
+node plugins/scientific-illustrator/scripts/officejs-setup.mjs sideload
+```
+
+Review and trust the certificate manually in Keychain Access, then restart PowerPoint. In a new Codex task, call `powerpoint_officejs_status` once to start the local bridge; next open **Insert > My Add-ins > Scientific Illustrator Live** in the target deck and call status again. The setup script never changes certificate trust automatically. Before drawing, status must report `connected=true`, then select `officejs` with `powerpoint_set_backend`.
+
 ### Prompting
 
 Select **Scientific Illustrator** in the Codex composer. In environments that support plugin links, you may start with:
@@ -412,10 +532,21 @@ Select **Scientific Illustrator** in the Codex composer. In environments that su
 
 You only need to state the target application and task. Skills are selected automatically.
 
-PowerPoint reference-recreation prompt:
+Live Mac PowerPoint reference-recreation prompt:
 
 ```text
-Use Scientific Illustrator in PowerPoint to recreate the attached reference as a maximally
+Use Scientific Illustrator in the current Mac PowerPoint deck. Before drawing, require
+powerpoint_officejs_status.connected=true and lock this task to the officejs backend. Stop and tell
+me if the task pane is not connected; do not call a file refresh "live". Recreate the reference
+panel by panel with editable objects and per_object pacing, wait for context.sync after every object,
+review each rendered region against the source, then run a whole-slide review and export the editable
+PPTX plus a final preview.
+```
+
+PowerPoint or WPS general reference-recreation prompt:
+
+```text
+Use Scientific Illustrator in Microsoft PowerPoint or WPS Presentation to recreate the attached reference as a maximally
 editable figure. Inspect status, capabilities, and presentation structure first. Prefer native
 text, shapes, connectors, tables, and charts; use only minimal atomic raster regions when native
 objects cannot reproduce the content. Draw panel by panel. After each panel, inspect structure and
@@ -451,7 +582,7 @@ If the earlier `drawio-scientific-illustrator` plugin is still enabled, disable 
 
 ### Contributing
 
-Issues and pull requests are welcome. Include the operating system, Codex version, PowerPoint or draw.io version, reproduction steps, and relevant MCP error text. Do not upload confidential figures or unpublished data.
+Issues and pull requests are welcome. Include the operating system, Codex version, PowerPoint/WPS/draw.io version, reproduction steps, and relevant MCP error text. Do not upload confidential figures or unpublished data.
 
 ## License
 
