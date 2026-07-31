@@ -307,7 +307,7 @@ export class OfficeJsCommandBridge {
     }
     const url = new URL(request.url || "/", this.origin);
     if (request.method === "GET" && url.pathname === "/health") {
-      jsonResponse(response, 200, { ok: true, version: "1.5.0", backend: "officejs-context-sync" });
+      jsonResponse(response, 200, { ok: true, version: "1.5.1", backend: "officejs-context-sync" });
       return;
     }
     if (!url.pathname.startsWith("/api/")) {

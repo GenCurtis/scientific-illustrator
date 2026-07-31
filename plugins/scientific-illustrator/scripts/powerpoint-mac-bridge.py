@@ -5,7 +5,8 @@ The preferred Windows Microsoft PowerPoint backend edits the live COM model.
 This bridge covers Microsoft PowerPoint for Mac and WPS Presentation on Windows
 or macOS. It builds native editable OOXML objects with python-pptx, keeps them
 in an isolated working copy, and reopens that copy in the selected presentation
-application after each mutation. The system mouse and keyboard are never used.
+application after each mutation. Background refresh preserves the user's current
+foreground application by default. The system mouse and keyboard are never used.
 """
 
 from __future__ import annotations
@@ -130,6 +131,40 @@ def _osascript(source: str, *arguments: str, check: bool = False) -> str:
     return result.stdout.strip()
 
 
+def _focus_policy() -> str:
+    value = os.environ.get("SCIENTIFIC_ILLUSTRATOR_FOCUS_POLICY", "preserve").strip().lower()
+    return value if value in {"preserve", "foreground"} else "preserve"
+
+
+def _open_windows_presentation(file_path: Path, executable: str | None, focus_policy: str) -> None:
+    if focus_policy == "foreground":
+        if executable:
+            subprocess.Popen([executable, str(file_path)], close_fds=True)
+        else:
+            os.startfile(str(file_path))
+        return
+
+    # SW_SHOWNOACTIVATE prevents a newly created WPS/PowerPoint window from
+    # taking focus. Some already-running hosts ignore that hint, so restore the
+    # previously focused window after dispatching the file-open request.
+    import ctypes
+
+    user32 = ctypes.windll.user32
+    previous_foreground = user32.GetForegroundWindow()
+    if executable:
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = 4  # SW_SHOWNOACTIVATE
+        subprocess.Popen([executable, str(file_path)], close_fds=True, startupinfo=startupinfo)
+    else:
+        result = ctypes.windll.shell32.ShellExecuteW(None, "open", str(file_path), None, None, 4)
+        if result <= 32:
+            raise RuntimeError(f"Unable to open presentation in the background; ShellExecuteW returned {result}.")
+    if previous_foreground:
+        time.sleep(0.15)
+        user32.SetForegroundWindow(previous_foreground)
+
+
 def _presentation_host_info(args: dict | None = None, state: dict | None = None) -> dict:
     host_name, host = _select_host(args, state)
     installed = bool(host["installed"])
@@ -170,18 +205,15 @@ def _presentation_host_info(args: dict | None = None, state: dict | None = None)
     }
 
 
-def _refresh_presentation(file_path: Path, state: dict | None = None) -> None:
+def _refresh_presentation(file_path: Path, state: dict | None = None, *, focus_policy: str | None = None) -> None:
     if os.environ.get("SCIENTIFIC_ILLUSTRATOR_POWERPOINT_SYNC", "1") == "0":
         return
     host_name, host = _select_host(state=state)
     if not host["installed"]:
         return
+    focus_policy = focus_policy or _focus_policy()
     if sys.platform == "win32":
-        executable = host.get("path")
-        if executable:
-            subprocess.Popen([executable, str(file_path)], close_fds=True)
-        else:
-            os.startfile(str(file_path))
+        _open_windows_presentation(file_path, host.get("path"), focus_policy)
         return
     if host_name == "powerpoint":
         close_script = r'''
@@ -202,10 +234,15 @@ end run
             # A modal/read-only dialog must never make an MCP edit hang. The
             # managed file is still safely updated on disk and can be reopened.
             pass
-    # `open -a` returns immediately and works for both Microsoft PowerPoint and
-    # WPS. Direct AppleScript `open` can block indefinitely when PowerPoint has
-    # a modal/read-only document, so it is intentionally not used here.
-    subprocess.Popen(["open", "-a", host["path"], str(file_path)], close_fds=True)
+    # `open -g -a` returns immediately, works for both Microsoft PowerPoint and
+    # WPS, and preserves the user's foreground application. Foreground mode
+    # omits `-g`. Direct AppleScript `open` can block indefinitely when
+    # PowerPoint has a modal/read-only document, so it is not used here.
+    open_args = ["open"]
+    if focus_policy == "preserve":
+        open_args.append("-g")
+    open_args.extend(["-a", host["path"], str(file_path)])
+    subprocess.Popen(open_args, close_fds=True)
 
 
 def _managed_path(label: str = "scientific-illustrator") -> Path:
@@ -421,6 +458,7 @@ def action_status(args: dict) -> dict:
         "managed_path": str(path) if path else None,
         "source_path": state.get("source_path"),
         "native_editable_output": True,
+        "focus_policy": _focus_policy(),
         "live_semantics": "safe file-backed reload; edits are written as native PPTX objects then the managed deck is reopened in the selected presentation application",
     }
 
@@ -461,7 +499,7 @@ def action_capabilities(args: dict) -> dict:
         "arrowhead_styles": [{"plugin_name": name} for name in ("none", "open", "triangle", "stealth", "diamond", "oval")],
         "limitations": [
             "PowerPoint for Mac and WPS Presentation use an isolated file-backed working copy because they do not expose the Windows PowerPoint COM automation server used by this plugin.",
-            "The managed deck is reopened after mutations; transient screen refresh is slower than Windows Microsoft PowerPoint COM.",
+            "The managed deck is reopened after mutations; the default preserve focus policy uses background opening so the presentation does not repeatedly take over the desktop.",
             "Renderer exports use local LibreOffice/Poppler when available and remain separate from the editable PPTX.",
         ],
     }
@@ -562,8 +600,8 @@ def action_activate_slide(args: dict) -> dict:
     index = int(args["slide_index"])
     prs = Presentation(path)
     _slide(prs, index)
-    _refresh_presentation(path, state)
-    return {"slide_index": index, "activated": True, "note": "The managed deck was brought to the front; macOS may retain the previous visible slide."}
+    _refresh_presentation(path, state, focus_policy="foreground")
+    return {"slide_index": index, "activated": True, "note": "Explicit activation brought the managed deck forward; ordinary drawing preserves the user's current foreground application."}
 
 
 def action_add_textbox(args: dict) -> dict:

@@ -18,6 +18,8 @@ Call `powerpoint_status` and `powerpoint_get_capabilities` with `host_applicatio
 
 Set `SCIENTIFIC_ILLUSTRATOR_PPT_HOST=wps` only when a task must force WPS across calls. Do not claim COM-style in-memory attachment in file-backed mode. Report the `backend`, `host_application`, managed path, and renderer from tool results.
 
+Ordinary drawing must not monopolize the desktop. Keep the default `powerpoint_set_focus_policy` value `preserve`, which updates COM, Office.js, or the OOXML working copy without repeatedly foregrounding PowerPoint/WPS. Use `foreground` only when the user explicitly asks to watch every step and accepts that the presentation stays in front. `powerpoint_activate_slide` is the explicit one-time foreground handoff. Focus policy may change during a session because it does not mix document backends or object models.
+
 For live Mac PowerPoint work:
 
 1. Call `powerpoint_officejs_status` before any presentation mutation.
@@ -35,7 +37,7 @@ If the user requests inspection only, call `powerpoint_status`, `powerpoint_get_
 1. Call `powerpoint_status` first.
 2. Call `powerpoint_get_capabilities` before selecting object types.
 3. Call `powerpoint_inspect` before editing an existing deck.
-4. For new COM/OOXML work, call `powerpoint_new_presentation` with the selected `host_application` so an unrelated open deck is not modified. Office.js cannot create a desktop presentation; require the user to open a blank deck and connect its task pane first.
+4. Keep `powerpoint_set_focus_policy(preserve)` unless the user explicitly requests foreground drawing. For new COM/OOXML work, call `powerpoint_new_presentation` with the selected `host_application` so an unrelated open deck is not modified. Office.js cannot create a desktop presentation; require the user to open a blank deck and connect its task pane first.
 5. Preserve an input deck by default and save an edited copy unless in-place save is explicit.
 6. Use absolute paths and never use operating-system mouse, keyboard, or screen automation.
 7. In file-backed mode, treat the managed working copy as authoritative. Save the final `.pptx` to the requested path and visually check the export in the actual target application because WPS and Microsoft PowerPoint can render fonts and charts differently.
@@ -81,7 +83,7 @@ In Office.js mode, pre-crop every atomic picture before calling `powerpoint_add_
 ## Draw one region at a time
 
 1. Establish slide size, margins, panel bounds, alignment anchors, spacing tokens, z-order, and connector lanes.
-2. Draw one logical region from background to foreground with stable names and nonzero pacing. Prefer `powerpoint_draw_sequence` with `pacing_mode=per_object` when the user wants to see every object; use `checkpoint` or `fast` only when explicitly requested or when performance is more important than animation.
+2. Draw one logical region from background to foreground with stable names and nonzero pacing. Prefer `powerpoint_draw_sequence` with `pacing_mode=per_object` when the user wants object-level checkpoints. Background focus preservation still applies; switch to `foreground` only when the user explicitly wants PowerPoint/WPS kept in front. Use `checkpoint` or `fast` when requested or when performance is more important than animation.
 3. Use fixed text geometry, explicit margins, wrapping, alignment, and controlled autofit.
 4. Use attached connectors for semantic relationships in COM/OOXML. In Office.js, inspect the reported `connector_mode=geometry_backed`, use exact orthogonal routes and explicit endpoint clearances, and re-run the renderer gate after node movement.
 5. Apply start/end clearance so free arrowheads do not enter rectangles.

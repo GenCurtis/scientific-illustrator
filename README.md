@@ -9,11 +9,12 @@
 **开发人：科研up主:进击的土博**<br>
 GitHub: [@icebird1998](https://github.com/icebird1998)
 
-> 当前版本：`1.5.0`。Windows Microsoft PowerPoint 使用 COM 实时控制；macOS Microsoft PowerPoint 在任务窗格连接后使用 Office.js 与 `context.sync()` 真正逐对象刷新，未连接时回退到安全的 OOXML 工作副本；Windows/macOS WPS 演示继续使用标准 PPTX 原生对象后端。
+> 当前源码版本：`1.5.1`。PowerPoint/WPS 绘制默认保持用户当前前台应用，不再在每个对象完成后抢回焦点；需要观看实时过程时可显式切换为前台模式。Windows Microsoft PowerPoint 使用 COM；macOS Microsoft PowerPoint 优先使用 Office.js，未连接时回退到 OOXML 工作副本；Windows/macOS WPS 演示使用标准 PPTX 原生对象后端。
 
 ### 版本发布与旧版回退
 
-- 最新稳定版：[`v1.5.0`](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.5.0)，加入 Windows/macOS 双平台下 draw.io、Microsoft PowerPoint 与 WPS 演示的统一适配，以及 Mac PowerPoint Office.js 实时后端；
+- 当前修复版源码：`1.5.1`，加入跨平台焦点保护，默认后台绘制且允许显式恢复旧的前台逐步展示行为；
+- 最新已发布稳定版：[`v1.5.0`](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.5.0)，加入 Windows/macOS 双平台下 draw.io、Microsoft PowerPoint 与 WPS 演示的统一适配，以及 Mac PowerPoint Office.js 实时后端；
 - 旧版归档：[`v1.3.0`](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.3.0)，保留首次公开发布时的 Windows PowerPoint COM 与 draw.io 实现；
 - 每个公开版本使用独立且不可移动的 Git 标签和 GitHub Release。发布新版不会覆盖、重写或删除旧版本，旧版源码压缩包会继续由 GitHub 提供；
 - `main` 分支和一键安装器默认跟随最新版。如需回退，请克隆仓库后执行 `git checkout v1.3.0`，再从该目录注册 Marketplace 并安装插件。
@@ -92,6 +93,18 @@ GitHub: [@icebird1998](https://github.com/icebird1998)
 | WPS 演示 | 支持；使用标准可编辑 PPTX/OOXML 工作副本并在 WPS 中打开 | 支持；使用同一标准可编辑 PPTX/OOXML 工作副本并在 WPS 中打开 |
 
 六种组合都是正式兼容目标，但后端体验不同：PowerPoint COM 和已连接的 Mac Office.js 是当前画布实时控制；WPS 是文件式可编辑后端，不应宣称为 COM/Office.js 式实时控制。字体、SVG、图表主题和应用版本差异仍需在交付目标软件中做最终渲染检查。
+
+### 后台绘制与窗口焦点
+
+从 `1.5.1` 起，PowerPoint/WPS 默认使用 `preserve` 焦点策略：普通绘制命令可以继续修改演示文稿，但不会在每个对象完成后把 PowerPoint 或 WPS 抢到最前面。用户可以同时使用浏览器、文献管理器、终端或其他软件。
+
+- Mac PowerPoint Office.js：`context.sync()` 本身不要求 PowerPoint 位于最前面，任务窗格保持连接即可；
+- Mac PowerPoint OOXML 与 Mac WPS：后台刷新使用 macOS `open -g`，不再使用会抢焦点的普通 `open -a`；
+- Windows PowerPoint COM：普通修改不再调用窗口 `Activate()`，并在命令结束后恢复原前台窗口；
+- Windows WPS/强制 OOXML：以“不激活窗口”方式打开工作副本，并尽力恢复原前台窗口；
+- draw.io：启动时可能显示一次窗口，后续对象通过本机 graph/CDP 通道写入，不会逐对象抢焦点。
+
+需要把 PowerPoint/WPS 固定在前台观看过程时，调用 `powerpoint_set_focus_policy` 并传入 `foreground`。恢复后台工作传入 `preserve`。`powerpoint_activate_slide` 始终作为一次明确的前台交接动作。
 
 #### PowerPoint / WPS 演示
 
@@ -223,7 +236,8 @@ powerpoint_officejs_status，确认 connected=true，再用 powerpoint_set_backe
 ```text
 [@scientific-illustrator](plugin://scientific-illustrator@personal)
 使用插件在 PowerPoint 或 WPS 演示中复刻我上传的参考图。先连接目标应用，调用状态、
-能力检测和结构检查工具；若没有演示文稿则新建。优先使用 PowerPoint 原生可编辑的
+能力检测和结构检查工具；将 powerpoint_set_focus_policy 设为 preserve，让绘制在后台
+继续且不要反复抢占窗口；若没有演示文稿则新建。优先使用 PowerPoint 原生可编辑的
 文字、形状、连接符、表格和图表。只有无法用原生对象可靠表达的最小语义区域才允许
 抠图插入，并继续检查它是否还能拆得更细。按面板逐步绘制，每完成一个局部就同时做
 结构检查和导出图视觉检查，有问题先修正再画下一区域。特别检查文字位置、对齐、等距、
@@ -360,6 +374,7 @@ Windows Microsoft PowerPoint 使用本机 Office COM；WPS 和 Mac PowerPoint �
 |---|---|---|
 | `SCIENTIFIC_ILLUSTRATOR_PPT_HOST` | `auto`、`powerpoint` 或 `wps` | `auto` |
 | `SCIENTIFIC_ILLUSTRATOR_PPT_BACKEND` | `auto`、`officejs`、`com` 或 `ooxml` | `auto` |
+| `SCIENTIFIC_ILLUSTRATOR_FOCUS_POLICY` | `preserve` 保持当前前台应用；`foreground` 让演示文稿持续置前 | `preserve` |
 | `SCIENTIFIC_ILLUSTRATOR_PYTHON` | 显式指定含 `python-pptx` 的 Python | 自动检测 |
 | `SCIENTIFIC_ILLUSTRATOR_OFFICEJS_PORT` | Office.js 本机 HTTPS 端口；修改后还需同步修改 manifest | `17645` |
 | `SCIENTIFIC_ILLUSTRATOR_OFFICEJS_CERT` | 显式指定 localhost 证书 | `~/.codex/scientific-illustrator/officejs/localhost.crt` |
@@ -373,6 +388,7 @@ Windows Microsoft PowerPoint 使用本机 Office COM；WPS 和 Mac PowerPoint �
 - **`node` 不可用**：安装 Node.js 22+，或确认 Codex 捆绑运行环境可供插件使用。
 - **PowerPoint/WPS 连接失败**：先调用状态工具确认 `host_application` 和 `backend`。Windows Microsoft PowerPoint 检查 COM 与受保护视图；Mac PowerPoint/WPS 检查应用路径和 `python-pptx`。
 - **Mac PowerPoint 看不到逐对象过程**：确认任务窗格仍打开，`powerpoint_officejs_status.connected=true`，并在第一项绘制操作前调用 `powerpoint_set_backend(officejs)`；若结果是 `python-pptx-ooxml+application-reload`，当前使用的是文件刷新兜底而非实时后端。
+- **PowerPoint/WPS 反复抢到最前面**：升级到 `1.5.1`，调用 `powerpoint_set_focus_policy({"focus_policy":"preserve"})`，并确认 `powerpoint_status.focus_policy=preserve`。只有显式调用 `powerpoint_activate_slide` 或把策略设为 `foreground` 才应主动置前。
 - **任务窗格显示证书或网络错误**：检查 localhost 证书是否由用户手动信任、端口 `17645` 是否被占用，并在 Codex 中先调用 `powerpoint_officejs_status` 启动桥接器后重新打开加载项。
 - **draw.io 找不到**：安装桌面版，或设置 `DRAWIO_PATH`。
 - **draw.io graph 未就绪**：关闭插件此前启动但已失效的 draw.io 窗口后重试。
@@ -418,6 +434,7 @@ scientific-illustrator/
 ### 已知限制
 
 - Windows PowerPoint COM 提供最完整的原生对象模型；连接任务窗格后的 Mac PowerPoint 可以真正逐对象刷新，未连接时和 WPS 一样使用较慢的文件级 OOXML 刷新；
+- 后台焦点保护避免持续抢占桌面，但不保证所有 PowerPoint/WPS 版本完全没有一次性的启动提示、Dock/任务栏闪烁或模态对话框；显式启动和 `powerpoint_activate_slide` 仍会按用户意图显示应用；
 - PowerPoint Office.js 当前不公开线条箭头端点、连接点绑定或原生图表创建。实时后端会把箭头/连接线和常规图表构造成命名、可编辑的几何组合并明确报告；若必须使用数据驱动的原生图表或真正附着连接符，应在绘制前选择 COM/OOXML；
 - Office.js 的 `ShapeFill.setImage` 不公开图片裁切参数，因此实时模式只接受已经紧密裁切的原子图像；
 - WPS 与 Microsoft PowerPoint 的字体度量、图表主题和 SVG 渲染可能有差异，最终预览必须在目标应用中检查；
@@ -440,7 +457,8 @@ GitHub: [@icebird1998](https://github.com/icebird1998)
 
 ### Versioned releases and rollback
 
-- Latest stable release: [`v1.5.0`](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.5.0), with the Windows/macOS draw.io, Microsoft PowerPoint, and WPS compatibility layer plus live Mac PowerPoint Office.js drawing;
+- Current source version: `1.5.1`, adding cross-platform focus preservation so presentation drawing runs in the background by default, with an explicit foreground mode;
+- Latest published stable release: [`v1.5.0`](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.5.0), with the Windows/macOS draw.io, Microsoft PowerPoint, and WPS compatibility layer plus live Mac PowerPoint Office.js drawing;
 - Archived first public release: [`v1.3.0`](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.3.0), preserving the original Windows PowerPoint COM and draw.io implementation;
 - Every public version has an independent immutable Git tag and GitHub Release. Publishing a new version does not overwrite or delete the source archives for an older version;
 - `main` and the one-command installers track the newest release. To roll back, clone the repository, run `git checkout v1.3.0`, then register and install the plugin from that checkout.
@@ -478,6 +496,8 @@ Restart Codex and open a new task after installation.
 | WPS Presentation | Supported through a standard editable PPTX/OOXML working copy opened in WPS | Supported through the same standard editable PPTX/OOXML working copy opened in WPS |
 
 All six combinations are compatibility targets, but their interaction models differ. PowerPoint COM and connected Mac Office.js update the current canvas live. WPS is a file-backed editable workflow and is not described as COM/Office.js-style live control. Always perform the final renderer check in the target application because fonts, SVG, chart themes, and application versions can differ.
+
+Starting with `1.5.1`, ordinary presentation drawing uses the `preserve` focus policy. Mac OOXML/WPS refreshes use background app opening, Windows COM avoids per-object window activation, and Windows WPS uses a no-activate launch plus foreground restoration. draw.io may surface once when launched, but later graph/CDP edits do not repeatedly take focus. Use `powerpoint_set_focus_policy({"focus_policy":"foreground"})` only when you explicitly want to watch the presentation remain in front; use `preserve` to keep working in other applications.
 
 ### Install
 
@@ -547,7 +567,9 @@ PowerPoint or WPS general reference-recreation prompt:
 
 ```text
 Use Scientific Illustrator in Microsoft PowerPoint or WPS Presentation to recreate the attached reference as a maximally
-editable figure. Inspect status, capabilities, and presentation structure first. Prefer native
+editable figure. Inspect status, capabilities, and presentation structure first. Set
+powerpoint_set_focus_policy to preserve so drawing continues without repeatedly foregrounding the
+presentation. Prefer native
 text, shapes, connectors, tables, and charts; use only minimal atomic raster regions when native
 objects cannot reproduce the content. Draw panel by panel. After each panel, inspect structure and
 export a slide image for visual review, correct all reproducible issues, then continue. Repeat the
