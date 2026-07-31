@@ -11,7 +11,7 @@ import { getOfficeJsBridge } from "./officejs-bridge.mjs";
 
 const execFileAsync = promisify(execFile);
 const SERVER_NAME = "powerpoint-live";
-const SERVER_VERSION = "1.5.0";
+const SERVER_VERSION = "1.5.1";
 const SUPPORTED_PROTOCOLS = new Set(["2024-11-05", "2025-03-26", "2025-06-18"]);
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const BRIDGE_PATH = path.join(SCRIPT_DIR, "powerpoint-bridge.ps1");
@@ -19,9 +19,13 @@ const OOXML_BRIDGE_PATH = path.join(SCRIPT_DIR, "powerpoint-mac-bridge.py");
 const MAX_BUFFER = 20 * 1024 * 1024;
 const officeJsBridge = getOfficeJsBridge();
 const VALID_BACKENDS = new Set(["auto", "officejs", "com", "ooxml"]);
+const VALID_FOCUS_POLICIES = new Set(["preserve", "foreground"]);
 let backendPreference = VALID_BACKENDS.has(String(process.env.SCIENTIFIC_ILLUSTRATOR_PPT_BACKEND || "auto").toLowerCase())
   ? String(process.env.SCIENTIFIC_ILLUSTRATOR_PPT_BACKEND || "auto").toLowerCase()
   : "auto";
+let focusPolicy = VALID_FOCUS_POLICIES.has(String(process.env.SCIENTIFIC_ILLUSTRATOR_FOCUS_POLICY || "preserve").toLowerCase())
+  ? String(process.env.SCIENTIFIC_ILLUSTRATOR_FOCUS_POLICY || "preserve").toLowerCase()
+  : "preserve";
 let lockedBackend = null;
 let mutationCount = 0;
 
@@ -107,6 +111,18 @@ const tools = [
     },
   },
   {
+    name: "powerpoint_set_focus_policy",
+    description: "Choose whether ordinary PowerPoint/WPS drawing commands preserve the user's current foreground application or intentionally foreground the presentation window. The default preserve policy prevents repeated focus stealing; powerpoint_activate_slide remains an explicit foreground action.",
+    inputSchema: {
+      type: "object",
+      required: ["focus_policy"],
+      properties: {
+        focus_policy: { type: "string", enum: ["preserve", "foreground"], description: "preserve keeps the user's current app focused; foreground retains legacy per-step presentation activation." },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: "powerpoint_get_capabilities",
     description: "Read the selected backend metadata and report which native or explicitly declared editable-composite object families, shapes, chart types, connectors, arrows, grouping, and layering operations are available. Also reports which capabilities this MCP exposes. This is read-only and never changes a deck.",
     inputSchema: {
@@ -139,7 +155,7 @@ const tools = [
   },
   {
     name: "powerpoint_new_presentation",
-    description: "Create and activate a separate blank presentation in visible PowerPoint. Use this to avoid modifying an already-open deck when starting new work.",
+    description: "Create a separate blank presentation without repeatedly stealing focus under the default preserve policy. Use this to avoid modifying an already-open deck when starting new work.",
     inputSchema: {
       type: "object",
       properties: {
@@ -181,7 +197,7 @@ const tools = [
   },
   {
     name: "powerpoint_activate_slide",
-    description: "Make a slide active in the visible PowerPoint window so subsequent live work is easy to follow.",
+    description: "Explicitly bring the presentation forward and make one slide active. Ordinary drawing commands preserve the user's current foreground application by default.",
     inputSchema: {
       type: "object",
       required: ["slide_index"],
@@ -191,7 +207,7 @@ const tools = [
   },
   {
     name: "powerpoint_add_slide",
-    description: "Insert a native PowerPoint slide and display it. Use the blank layout for fully programmatic scientific figures.",
+    description: "Insert a native PowerPoint slide. With the default preserve focus policy, the edit occurs without foregrounding PowerPoint; use powerpoint_activate_slide only when a visible handoff is wanted.",
     inputSchema: {
       type: "object",
       properties: {
@@ -717,7 +733,11 @@ async function runOoxmlBridge(action, args = {}) {
   const payload = Buffer.from(JSON.stringify({ action, arguments: args }), "utf8").toString("base64");
   const executable = await ooxmlPythonExecutable();
   try {
-    const { stdout } = await execFileAsync(executable, [OOXML_BRIDGE_PATH, payload], { encoding: "utf8", maxBuffer: MAX_BUFFER });
+    const { stdout } = await execFileAsync(executable, [OOXML_BRIDGE_PATH, payload], {
+      encoding: "utf8",
+      maxBuffer: MAX_BUFFER,
+      env: { ...process.env, SCIENTIFIC_ILLUSTRATOR_FOCUS_POLICY: String(args.focus_policy || focusPolicy) },
+    });
     const text = stdout.trim();
     if (!text) throw new Error("PowerPoint/WPS OOXML bridge returned no JSON.");
     return JSON.parse(text);
@@ -866,14 +886,16 @@ async function resolveBackend(action, args = {}) {
 }
 
 async function runBridge(action, args = {}) {
-  const backend = await resolveBackend(action, args);
+  const effectiveArgs = { ...args, focus_policy: args.focus_policy || focusPolicy };
+  const backend = await resolveBackend(action, effectiveArgs);
   let value;
-  if (backend === "officejs") value = await runOfficeJsBridge(action, args);
-  else if (backend === "com") value = await runComBridge(action, args);
-  else value = await runOoxmlBridge(action, args);
+  if (backend === "officejs") value = await runOfficeJsBridge(action, effectiveArgs);
+  else if (backend === "com") value = await runComBridge(action, effectiveArgs);
+  else value = await runOoxmlBridge(action, effectiveArgs);
   if (BACKEND_LOCKING_ACTIONS.has(action)) lockedBackend = backend;
   if (MUTATING_ACTIONS.has(action)) mutationCount += 1;
   if (value && typeof value === "object") {
+    value.focus_policy = focusPolicy;
     value.backend_selection = {
       selected: backend,
       preference: backendPreference,
@@ -975,6 +997,21 @@ async function handleTool(name, args = {}) {
       },
     };
   }
+  if (name === "powerpoint_set_focus_policy") {
+    const requested = String(args.focus_policy || "preserve").toLowerCase();
+    if (!VALID_FOCUS_POLICIES.has(requested)) throw new Error(`Unknown focus policy: ${requested}`);
+    focusPolicy = requested;
+    return {
+      value: {
+        focus_policy: focusPolicy,
+        behavior: focusPolicy === "preserve"
+          ? "Ordinary drawing commands keep the user's current foreground application focused. powerpoint_activate_slide is still an explicit foreground action."
+          : "Presentation windows may be foregrounded after drawing commands so object-by-object progress remains visible.",
+        locked_backend: lockedBackend,
+        mutation_count: mutationCount,
+      },
+    };
+  }
   const actionMap = {
     powerpoint_status: "status",
     powerpoint_get_capabilities: "capabilities",
@@ -1055,7 +1092,7 @@ async function handleMessage(message) {
       protocolVersion: SUPPORTED_PROTOCOLS.has(requested) ? requested : "2025-06-18",
       capabilities: { tools: { listChanged: false } },
       serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
-      instructions: "Control Microsoft PowerPoint or WPS Presentation through the platform-selected backend. Windows PowerPoint prefers COM. Mac PowerPoint prefers a connected Office.js task pane and waits for context.sync after every object so drawing is visible; otherwise it reports and uses the file-backed OOXML fallback. WPS uses OOXML. Call powerpoint_status, powerpoint_officejs_status when live Mac drawing is requested, and powerpoint_get_capabilities before editing. Never mix live and file-backed objects in one session, never use OS-level mouse or keyboard automation, preserve reconstructable content as native objects, require atomic raster declarations, and run structure plus renderer review after each region and the whole slide.",
+      instructions: "Control Microsoft PowerPoint or WPS Presentation through the platform-selected backend. Windows PowerPoint prefers COM. Mac PowerPoint prefers a connected Office.js task pane and waits for context.sync after every object so drawing is visible; otherwise it reports and uses the file-backed OOXML fallback. WPS uses OOXML. Ordinary drawing preserves the user's foreground application by default; use powerpoint_set_focus_policy(foreground) only when the user explicitly wants PowerPoint/WPS kept in front, and use powerpoint_activate_slide for an intentional visible handoff. Call powerpoint_status, powerpoint_officejs_status when live Mac drawing is requested, and powerpoint_get_capabilities before editing. Never mix live and file-backed objects in one session, never use OS-level mouse or keyboard automation, preserve reconstructable content as native objects, require atomic raster declarations, and run structure plus renderer review after each region and the whole slide.",
     });
   }
   if (method === "ping") return rpcResult(id, {});

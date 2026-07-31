@@ -19,6 +19,52 @@ function Get-Argument {
     return $Default
 }
 
+$script:FocusPolicy = "preserve"
+
+function Normalize-FocusPolicy {
+    param($Value)
+    $normalized = [string]$Value
+    if ([string]::IsNullOrWhiteSpace($normalized)) { return "preserve" }
+    $normalized = $normalized.Trim().ToLowerInvariant()
+    if ($normalized -notin @("preserve", "foreground")) { return "preserve" }
+    return $normalized
+}
+
+function Initialize-FocusInterop {
+    if (-not ("ScientificIllustrator.FocusWindow" -as [type])) {
+        Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+namespace ScientificIllustrator {
+    public static class FocusWindow {
+        [DllImport("user32.dll")]
+        public static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool IsWindow(IntPtr hWnd);
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool SetForegroundWindow(IntPtr hWnd);
+    }
+}
+"@
+    }
+}
+
+function Get-ForegroundWindowHandle {
+    Initialize-FocusInterop
+    return [ScientificIllustrator.FocusWindow]::GetForegroundWindow()
+}
+
+function Restore-ForegroundWindow {
+    param([IntPtr]$WindowHandle)
+    if ($WindowHandle -eq [IntPtr]::Zero) { return }
+    Initialize-FocusInterop
+    if ([ScientificIllustrator.FocusWindow]::IsWindow($WindowHandle)) {
+        $null = [ScientificIllustrator.FocusWindow]::SetForegroundWindow($WindowHandle)
+    }
+}
+
 function Import-OfficeInteropMetadata {
     $result = [ordered]@{
         office_core = $false
@@ -262,12 +308,14 @@ function Get-Slide {
 }
 
 function Show-Slide {
-    param($Application, [int]$Index)
+    param($Application, [int]$Index, [bool]$ForceForeground = $false)
     try {
         if ($null -ne $Application.ActiveWindow) {
             $Application.ActiveWindow.ViewType = 9
             $Application.ActiveWindow.View.GotoSlide($Index)
-            $Application.ActiveWindow.Activate()
+            if ($ForceForeground -or $script:FocusPolicy -eq "foreground") {
+                $Application.ActiveWindow.Activate()
+            }
         }
     }
     catch {
@@ -598,7 +646,9 @@ function Invoke-NewPresentation {
     $application = Get-PowerPointApplication $true
     $application.Visible = -1
     $presentation = $application.Presentations.Add($true)
-    try { $presentation.Windows.Item(1).Activate() } catch {}
+    if ($script:FocusPolicy -eq "foreground") {
+        try { $presentation.Windows.Item(1).Activate() } catch {}
+    }
     if ([bool](Get-Argument $Arguments "maximize" $true)) {
         try { $application.ActiveWindow.WindowState = 3 } catch {}
     }
@@ -626,6 +676,7 @@ function Invoke-Status {
         active_application_process_id = if ($null -ne $application) { Get-PowerPointProcessId $application } else { 0 }
         active_presentation = $null -ne $activePresentation
         control_scope = "PowerPoint native COM object model only"
+        focus_policy = $script:FocusPolicy
     }
     if ($null -ne $activePresentation) {
         $result.presentation = Get-PresentationSummary $application $activePresentation
@@ -670,7 +721,9 @@ function Invoke-Launch {
     if ($null -eq $presentation) {
         throw "No active presentation is available and create_if_missing=false."
     }
-    try { $presentation.Windows.Item(1).Activate() } catch {}
+    if ($script:FocusPolicy -eq "foreground") {
+        try { $presentation.Windows.Item(1).Activate() } catch {}
+    }
     if ([bool](Get-Argument $Arguments "maximize" $true)) {
         try { $application.ActiveWindow.WindowState = 3 } catch {}
     }
@@ -989,7 +1042,7 @@ function Invoke-ActivateSlide {
     $presentation = Get-ActivePresentation $application
     $index = [int](Get-Argument $Arguments "slide_index")
     $null = Get-Slide $presentation $index
-    Show-Slide $application $index
+    Show-Slide $application $index $true
     return [ordered]@{ slide_index = $index; activated = $true }
 }
 
@@ -1841,7 +1894,17 @@ function Invoke-Action {
 try {
     $json = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($PayloadBase64))
     $payload = $json | ConvertFrom-Json
-    $result = Invoke-Action ([string]$payload.action) $payload.arguments
+    $requestedFocusPolicy = Get-Argument $payload.arguments "focus_policy" $env:SCIENTIFIC_ILLUSTRATOR_FOCUS_POLICY
+    $script:FocusPolicy = Normalize-FocusPolicy $requestedFocusPolicy
+    $previousForegroundWindow = if ($script:FocusPolicy -eq "preserve") { Get-ForegroundWindowHandle } else { [IntPtr]::Zero }
+    try {
+        $result = Invoke-Action ([string]$payload.action) $payload.arguments
+    }
+    finally {
+        if ($script:FocusPolicy -eq "preserve" -and [string]$payload.action -ne "activate_slide") {
+            Restore-ForegroundWindow $previousForegroundWindow
+        }
+    }
     [Console]::Out.Write(($result | ConvertTo-Json -Depth 12 -Compress))
 }
 catch {
