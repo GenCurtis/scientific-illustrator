@@ -80,15 +80,12 @@ node plugins/scientific-illustrator/scripts/officejs-setup.mjs sideload
 
 ## 使用
 
-在 Codex 输入框选择 **Scientific Illustrator**，或使用：
-
-```text
-[@scientific-illustrator](plugin://scientific-illustrator@scientific-illustrator-tools)
-```
+下面的提示词已包含插件调用命令，整段复制到 Codex 即可使用。
 
 ### PowerPoint / WPS 复刻参考图
 
 ```text
+[@scientific-illustrator](plugin://scientific-illustrator@scientific-illustrator-tools)
 使用 Scientific Illustrator，在 PowerPoint 中复刻我上传的参考图。开始前检查状态、
 能力和演示文稿结构，并保持 focus_policy=preserve，不要反复抢占窗口。优先使用原生
 可编辑对象；只有无法可靠重建的最小区域才使用紧裁剪图片。按区域绘制，每个区域完成
@@ -100,6 +97,7 @@ node plugins/scientific-illustrator/scripts/officejs-setup.mjs sideload
 ### draw.io 复刻参考图
 
 ```text
+[@scientific-illustrator](plugin://scientific-illustrator@scientific-illustrator-tools)
 使用 Scientific Illustrator，在实时 draw.io 画布中复刻我上传的参考图。优先使用
 可编辑 cell、文字、连接线、表格和图表；复杂素材只保留最小原子图片。按区域绘制，
 逐区检查并修正，最后保存 .drawio 并导出 PNG。
