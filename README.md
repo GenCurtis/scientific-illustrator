@@ -6,7 +6,7 @@
 
 GitHub：[@icebird1998](https://github.com/icebird1998)
 
-当前版本：[v1.5.1](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.5.1)
+当前版本：[v1.5.2](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.5.2)
 
 本项目是 [drawio-scientific-illustrator](https://github.com/icebird1998/drawio-scientific-illustrator) 的升级整合版，后续功能只在本项目更新。
 
@@ -150,6 +150,7 @@ node plugins/scientific-illustrator/scripts/officejs-setup.mjs sideload
 
 | 版本 | 主要变化 |
 |---|---|
+| [v1.5.2](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.5.2) | 修复 Mac PowerPoint 实时加载项的图标格式，避免加载项被静默忽略 |
 | [v1.5.1](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.5.1) | 修复 PowerPoint/WPS 反复抢占窗口；默认可在后台绘制 |
 | [v1.5.0](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.5.0) | 支持 Windows/macOS 下的 PowerPoint、WPS、draw.io，并加入 Mac PowerPoint 实时模式 |
 | [v1.3.0](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.3.0) | 首个公开版本，支持 Windows PowerPoint 和 draw.io |

@@ -3,6 +3,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const packagePath = path.join(root, "package.json");
+const rootPackage = JSON.parse(await fs.readFile(packagePath, "utf8"));
 const marketplacePath = path.join(root, ".agents", "plugins", "marketplace.json");
 const marketplace = JSON.parse(await fs.readFile(marketplacePath, "utf8"));
 
@@ -26,10 +28,11 @@ const mcp = JSON.parse(await fs.readFile(mcpPath, "utf8"));
 if (entry.name !== manifest.name || manifest.name !== "scientific-illustrator") {
   throw new Error("Marketplace and manifest plugin names differ.");
 }
-if (manifest.version !== "1.5.1") throw new Error("Unexpected public release version.");
+if (manifest.version !== "1.5.2") throw new Error("Unexpected public release version.");
 if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(manifest.version)) {
   throw new Error("Manifest version is not valid semantic versioning.");
 }
+if (rootPackage.version !== manifest.version) throw new Error("Package and plugin versions differ.");
 if (manifest.repository !== "https://github.com/icebird1998/scientific-illustrator") {
   throw new Error("Manifest repository URL is incorrect.");
 }
@@ -53,7 +56,7 @@ for (const server of requiredServers) {
     await fs.access(path.resolve(pluginRoot, argument));
   }
 }
-for (const serverFile of ["live-server.mjs", "server.mjs", "powerpoint-server.mjs"]) {
+for (const serverFile of ["live-server.mjs", "server.mjs", "powerpoint-server.mjs", "officejs-bridge.mjs"]) {
   const source = await fs.readFile(path.join(pluginRoot, "scripts", serverFile), "utf8");
   if (!source.includes(`const SERVER_VERSION = "${manifest.version}";`)) {
     throw new Error(`${serverFile} does not report plugin version ${manifest.version}.`);
@@ -62,7 +65,30 @@ for (const serverFile of ["live-server.mjs", "server.mjs", "powerpoint-server.mj
 await fs.access(path.join(pluginRoot, "scripts", "powerpoint-mac-bridge.py"));
 await fs.access(path.join(pluginRoot, "scripts", "officejs-bridge.mjs"));
 await fs.access(path.join(pluginRoot, "scripts", "officejs-setup.mjs"));
-await fs.access(path.join(pluginRoot, "officejs", "manifest.xml"));
+const officeJsManifestPath = path.join(pluginRoot, "officejs", "manifest.xml");
+await fs.access(officeJsManifestPath);
+const officeJsManifest = await fs.readFile(officeJsManifestPath, "utf8");
+if (!officeJsManifest.includes(`<Version>${manifest.version}.0</Version>`)) {
+  throw new Error("Office.js and plugin versions differ.");
+}
+for (const [element, fileName, width, height] of [
+  ["IconUrl", "icon-32.png", 32, 32],
+  ["HighResolutionIconUrl", "icon-64.png", 64, 64],
+]) {
+  const match = officeJsManifest.match(new RegExp(`<${element}\\s+DefaultValue="([^"]+)"\\s*/>`));
+  const expectedUrl = `https://localhost:17645/assets/${fileName}`;
+  if (match?.[1] !== expectedUrl) {
+    throw new Error(`${element} must use ${expectedUrl}; Office manifest icons cannot use SVG.`);
+  }
+  const image = await fs.readFile(path.join(pluginRoot, "officejs", "assets", fileName));
+  const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  if (!image.subarray(0, pngSignature.length).equals(pngSignature)) {
+    throw new Error(`${fileName} is not a valid PNG asset.`);
+  }
+  if (image.readUInt32BE(16) !== width || image.readUInt32BE(20) !== height) {
+    throw new Error(`${fileName} must be ${width}x${height} pixels.`);
+  }
+}
 await fs.access(path.join(pluginRoot, "officejs", "taskpane.html"));
 const officeJsTaskpanePath = path.join(pluginRoot, "officejs", "taskpane.js");
 await fs.access(officeJsTaskpanePath);

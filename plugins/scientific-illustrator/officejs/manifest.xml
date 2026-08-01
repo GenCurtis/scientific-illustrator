@@ -5,13 +5,13 @@
   xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
   xsi:type="TaskPaneApp">
   <Id>17f06c41-8f7f-4a92-9dcf-571965576160</Id>
-  <Version>1.5.1.0</Version>
+  <Version>1.5.2.0</Version>
   <ProviderName>科研up主:进击的土博</ProviderName>
   <DefaultLocale>zh-CN</DefaultLocale>
   <DisplayName DefaultValue="Scientific Illustrator Live" />
   <Description DefaultValue="Use Office.js context.sync() to draw editable scientific figures object by object in the current PowerPoint deck." />
-  <IconUrl DefaultValue="https://localhost:17645/assets/icon.svg" />
-  <HighResolutionIconUrl DefaultValue="https://localhost:17645/assets/icon.svg" />
+  <IconUrl DefaultValue="https://localhost:17645/assets/icon-32.png" />
+  <HighResolutionIconUrl DefaultValue="https://localhost:17645/assets/icon-64.png" />
   <SupportUrl DefaultValue="https://github.com/icebird1998/scientific-illustrator" />
   <AppDomains>
     <AppDomain>https://localhost:17645</AppDomain>

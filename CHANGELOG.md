@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.2 — 2026-08-01
+
+- Replaced unsupported SVG manifest icons with validated 32 px and 64 px PNG assets so Mac PowerPoint no longer silently ignores the Office.js add-in.
+- Added the correct `image/png` response type and regression checks for manifest icon paths, dimensions, MIME types, and synchronized release versions.
+
 ## 1.5.0 — 2026-07-30
 
 - Added a sideloadable Microsoft PowerPoint Office.js task pane for macOS with direct `PowerPoint.run()` and per-object `context.sync()` updates in the current deck.

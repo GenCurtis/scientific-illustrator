@@ -39,6 +39,28 @@ function requestJson(port, method, route, token, body) {
   });
 }
 
+function requestAsset(port, route) {
+  return new Promise((resolve, reject) => {
+    const request = https.request({
+      hostname: "127.0.0.1",
+      port,
+      path: route,
+      method: "GET",
+      rejectUnauthorized: false,
+    }, (response) => {
+      const chunks = [];
+      response.on("data", (chunk) => chunks.push(chunk));
+      response.on("end", () => resolve({
+        status: response.statusCode,
+        contentType: response.headers["content-type"],
+        body: Buffer.concat(chunks),
+      }));
+    });
+    request.once("error", reject);
+    request.end();
+  });
+}
+
 let bridge;
 try {
   await execFileAsync("openssl", [
@@ -63,6 +85,14 @@ try {
   const health = await requestJson(started.port, "GET", "/health");
   assert.equal(health.status, 200);
   assert.equal(health.value.ok, true);
+  assert.equal(health.value.version, "1.5.2");
+
+  for (const icon of ["icon-32.png", "icon-64.png"]) {
+    const asset = await requestAsset(started.port, `/assets/${icon}`);
+    assert.equal(asset.status, 200);
+    assert.equal(asset.contentType, "image/png");
+    assert.deepEqual(asset.body.subarray(0, 8), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  }
 
   const unauthorized = await requestJson(started.port, "POST", "/api/register", "wrong-token", { client_id: "smoke-client-1" });
   assert.equal(unauthorized.status, 401);
@@ -96,7 +126,7 @@ try {
 
   const heartbeat = await requestJson(started.port, "POST", "/api/heartbeat", bridge.sessionToken, metadata);
   assert.equal(heartbeat.status, 200);
-  console.log("Office.js HTTPS bridge registration, long-poll dispatch, acknowledgement, and timeout checks passed.");
+  console.log("Office.js HTTPS bridge assets, registration, long-poll dispatch, acknowledgement, and timeout checks passed.");
 } finally {
   if (bridge) await bridge.close();
   await fs.rm(temporaryDirectory, { recursive: true, force: true });
