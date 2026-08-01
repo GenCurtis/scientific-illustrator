@@ -6,7 +6,7 @@
 
 GitHub：[@icebird1998](https://github.com/icebird1998)
 
-当前版本：[v1.5.2](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.5.2)
+当前版本：[v1.5.3](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.5.3)
 
 本项目是 [drawio-scientific-illustrator](https://github.com/icebird1998/drawio-scientific-illustrator) 的升级整合版，后续功能只在本项目更新。
 
@@ -39,10 +39,12 @@ scientific-illustrator@scientific-illustrator-tools。完成后提醒我重启 C
 | 软件 | Windows | macOS | 使用方式与结果 |
 |---|---|---|---|
 | Microsoft PowerPoint | 支持 | 支持 | 绘制为可编辑 PPTX；Windows 可实时绘制，Mac 可选择普通模式或实时加载项模式 |
-| WPS 演示 | 支持 | 支持 | 绘制为可编辑 PPTX；通过后台文件刷新更新，不会持续抢占窗口 |
+| WPS 演示 | 支持 | 支持 | 绘制为可编辑 PPTX 工作副本；默认按检查点后台刷新，不会持续抢占窗口 |
 | draw.io Desktop | 支持 | 支持 | 直接控制 draw.io 画布，保存可编辑 .drawio 并导出预览图 |
 
-默认情况下，PowerPoint 和 WPS 会在后台绘制，你可以继续使用电脑。显微照片、复杂纹理等确实无法用形状还原的内容，只会把最小必要区域作为图片插入，其余文字、箭头和边框仍保持可编辑。
+默认情况下，PowerPoint 和 WPS 会在后台绘制，你可以继续使用电脑。WPS 使用可编辑 PPTX 工作副本，不会假装已经连接任意未保存的当前窗口；macOS 会验证文件是否真的由 WPS 打开，Windows 无法验证时会明确显示“未知”。draw.io 不认识的图形名会直接报错，不会悄悄退化成矩形。显微照片、复杂纹理等确实无法用形状还原的内容，只会把最小必要区域作为图片插入，其余文字、箭头和边框仍保持可编辑。
+
+每次更新都会在 Ubuntu、macOS 和 Windows 上运行代码、MCP、Python、PowerShell、路径发现与 OOXML 回归测试。本版另在真实 Mac 上验证了 PowerPoint 精确打开/刷新/关闭、WPS 指定文件打开和 draw.io 实时画布；GitHub 公共测试机没有商业版 PowerPoint/WPS，因此 Windows 的应用内联调必须由安装后的状态工具确认，不能把模拟测试当成实机连接成功。
 
 ## 直接复制使用
 
@@ -53,7 +55,8 @@ scientific-illustrator@scientific-illustrator-tools。完成后提醒我重启 C
 ~~~text
 [@scientific-illustrator](plugin://scientific-illustrator@scientific-illustrator-tools)
 使用 Scientific Illustrator，在当前 Microsoft PowerPoint 中复刻我上传的参考图。
-先连接 PowerPoint，检查状态、可用能力和当前幻灯片；如果没有演示文稿就新建。
+先连接 PowerPoint，检查状态、可用能力、backend 和当前幻灯片；如果没有演示文稿就新建。
+只有 COM 或 officejs-context-sync 才能声称连接当前窗口；如果使用 OOXML，明确说明正在编辑工作副本。
 默认在后台绘制，不要反复抢占窗口。优先使用可编辑的文字、形状、连接线、表格和图表。
 只有无法可靠绘制的最小区域，例如显微照片或复杂纹理，才裁剪为图片插入。
 按区域逐步绘制，每完成一个区域就检查结构和预览图，有问题先修正再继续。
@@ -66,11 +69,13 @@ scientific-illustrator@scientific-illustrator-tools。完成后提醒我重启 C
 
 ~~~text
 [@scientific-illustrator](plugin://scientific-illustrator@scientific-illustrator-tools)
-使用 Scientific Illustrator，在当前 WPS 演示中复刻我上传的参考图。
-请明确连接 WPS 演示，不要连接 Microsoft PowerPoint；先检查状态、可用能力和当前幻灯片，
-如果没有演示文稿就新建。默认在后台绘制，不要反复抢占窗口。
+使用 Scientific Illustrator，在 WPS 演示中复刻我上传的参考图。
+请将 host_application 明确设为 wps，不要连接 Microsoft PowerPoint；先检查状态和可用能力，
+确认 target_application=wps 且 microsoft_powerpoint_used=false。如果没有指定要编辑的 PPTX 路径，
+就新建一个 WPS 可编辑工作副本，不要声称已连接任意未保存的当前窗口。默认在后台按检查点绘制。
 优先使用可编辑的文字、形状、连接线、表格和图表。只有无法可靠绘制的最小区域，
-例如显微照片或复杂纹理，才裁剪为图片插入。按区域逐步绘制并逐区检查、修正。
+例如显微照片或复杂纹理，才裁剪为图片插入。按区域逐步绘制；每个区域完成后调用刷新，
+分别检查 open_dispatched、document_open_verified 和 refresh_verified，有问题先修正。
 完成后做全图对比检查，保存 PPTX 并导出最终预览图。
 ~~~
 
@@ -150,6 +155,7 @@ node plugins/scientific-illustrator/scripts/officejs-setup.mjs sideload
 
 | 版本 | 主要变化 |
 |---|---|
+| [v1.5.3](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.5.3) | 修复双平台三软件兼容、连接状态和表格/图表/箭头更新；增加三平台 CI、真实打开验证及 draw.io 防伪形状检查 |
 | [v1.5.2](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.5.2) | 修复 Mac PowerPoint 实时加载项的图标格式，避免加载项被静默忽略 |
 | [v1.5.1](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.5.1) | 修复 PowerPoint/WPS 反复抢占窗口；默认可在后台绘制 |
 | [v1.5.0](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.5.0) | 支持 Windows/macOS 下的 PowerPoint、WPS、draw.io，并加入 Mac PowerPoint 实时模式 |

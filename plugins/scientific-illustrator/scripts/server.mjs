@@ -10,7 +10,7 @@ import { drawioInstallHint, resolveDrawioExecutable } from "./drawio-path.mjs";
 
 const execFileAsync = promisify(execFile);
 const SERVER_NAME = "scientific-illustrator-file-utils";
-const SERVER_VERSION = "1.5.2";
+const SERVER_VERSION = "1.5.3";
 const DRAWIO = resolveDrawioExecutable();
 const MAX_XML_BYTES = 12 * 1024 * 1024;
 const SUPPORTED_PROTOCOLS = new Set(["2024-11-05", "2025-03-26", "2025-06-18"]);
@@ -19,7 +19,7 @@ const FILE_CONSTRUCTION_CONTEXTS = new Set(["post-live-repair", "explicit-file-o
 const DEFAULT_VERTEX_STYLE =
   "rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#1f2937;";
 const DEFAULT_EDGE_STYLE =
-  "edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;";
+  "edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;";
 
 const tools = [
   {
@@ -763,7 +763,9 @@ function edgeXml(e) {
   if (!e.id) throw new Error("Every edge requires a non-empty id.");
   const floating = e.source_point && e.target_point;
   if (!floating && (!e.source || !e.target)) throw new Error(`Edge '${e.id}' requires source and target, or source_point and target_point.`);
-  let style = e.style ? ensureStyle(e.style) : DEFAULT_EDGE_STYLE;
+  let style = e.style ? ensureStyle(e.style) : floating
+    ? "edgeStyle=none;rounded=0;html=1;endArrow=none;startArrow=none;"
+    : DEFAULT_EDGE_STYLE;
   style = setStyle(style, "strokeColor", e.color);
   style = setStyle(style, "strokeWidth", e.width);
   if (e.dashed !== undefined) style = setStyle(style, "dashed", e.dashed ? 1 : 0);
@@ -1015,8 +1017,7 @@ async function handleMessage(message) {
   return rpcError(id, -32601, `Method not found: ${method}`);
 }
 
-const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
-rl.on("line", async (line) => {
+async function processInputLine(line) {
   if (!line.trim()) return;
   let message;
   try {
@@ -1031,6 +1032,14 @@ rl.on("line", async (line) => {
   } catch (error) {
     process.stdout.write(`${JSON.stringify(rpcError(message.id, -32603, "Internal error", error.message))}\n`);
   }
+}
+
+const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
+let requestQueue = Promise.resolve();
+rl.on("line", (line) => {
+  requestQueue = requestQueue.then(() => processInputLine(line)).catch((error) => {
+    process.stderr.write(`[${SERVER_NAME}] request queue error: ${error.stack || error.message}\n`);
+  });
 });
 
 process.on("uncaughtException", (error) => process.stderr.write(`[${SERVER_NAME}] ${error.stack || error.message}\n`));

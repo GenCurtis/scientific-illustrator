@@ -17,7 +17,7 @@ const [serverSource, pythonSource, comSource] = await Promise.all([
 
 for (const [label, source, required] of [
   ["PowerPoint MCP", serverSource, ["powerpoint_set_focus_policy", "SCIENTIFIC_ILLUSTRATOR_FOCUS_POLICY", "focus_policy: focusPolicy"]],
-  ["OOXML bridge", pythonSource, ['open_args.append("-g")', "SW_SHOWNOACTIVATE", 'focus_policy="foreground"']],
+  ["OOXML bridge", pythonSource, ['common = ["-g"] if focus_policy == "preserve" else []', "SW_SHOWNOACTIVATE", 'focus_policy="foreground"', "document_open_verified"]],
   ["Windows COM bridge", comSource, ['$ForceForeground -or $script:FocusPolicy -eq "foreground"', "Restore-ForegroundWindow", 'Show-Slide $application $index $true']],
 ]) {
   const missing = required.filter((fragment) => !source.includes(fragment));

@@ -15,7 +15,7 @@ const servers = [
   },
   {
     file: "plugins/scientific-illustrator/scripts/powerpoint-server.mjs",
-    tools: ["powerpoint_status", "powerpoint_officejs_status", "powerpoint_set_backend", "powerpoint_set_focus_policy", "powerpoint_get_capabilities", "powerpoint_add_table", "powerpoint_add_chart", "powerpoint_audit_figure", "powerpoint_save"],
+    tools: ["powerpoint_status", "powerpoint_officejs_status", "powerpoint_set_backend", "powerpoint_set_focus_policy", "powerpoint_refresh", "powerpoint_get_capabilities", "powerpoint_add_table", "powerpoint_add_chart", "powerpoint_audit_figure", "powerpoint_save"],
     call: { name: "powerpoint_officejs_status", arguments: { wait_for_connection_ms: 0 } },
   },
 ];

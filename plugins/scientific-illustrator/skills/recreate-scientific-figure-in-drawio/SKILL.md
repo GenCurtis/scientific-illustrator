@@ -27,7 +27,7 @@ Use file utilities only to validate, inspect, or export an already saved live sn
 | Semantic object/operation | draw.io implementation |
 |---|---|
 | Editable text | `drawio_live_add_shape` with `shape=text` |
-| Editable symbol/panel | `drawio_live_add_shape` using capability names/styles |
+| Editable symbol/panel | `drawio_live_add_shape` using a baseline or currently registered capability name/style |
 | Free arrow/axis/tick | `drawio_live_add_line` with endpoint clearances |
 | Attached relationship | `drawio_live_add_edge` with entry/exit and waypoints |
 | Editable table | `drawio_live_add_table`, cell updates, and `drawio_live_update_table_layout` |
@@ -38,6 +38,8 @@ Use file utilities only to validate, inspect, or export an already saved live sn
 | Renderer review | `drawio_live_screenshot` |
 
 Use editable cells or editable composites for every reconstructable semantic object. Never substitute a panel screenshot.
+
+Never invent a shape name. Unknown or unloaded shape/stencil names are rejected to prevent draw.io silently displaying a generic rectangle. If the required object is not listed by `drawio_live_get_capabilities`, construct it from editable primitives; use an atomic image only when the smallest remaining semantic region is genuinely irreducible.
 
 ## Inventory before drawing
 

@@ -11,11 +11,13 @@ import { getOfficeJsBridge } from "./officejs-bridge.mjs";
 
 const execFileAsync = promisify(execFile);
 const SERVER_NAME = "powerpoint-live";
-const SERVER_VERSION = "1.5.2";
+const SERVER_VERSION = "1.5.3";
 const SUPPORTED_PROTOCOLS = new Set(["2024-11-05", "2025-03-26", "2025-06-18"]);
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const BRIDGE_PATH = path.join(SCRIPT_DIR, "powerpoint-bridge.ps1");
 const OOXML_BRIDGE_PATH = path.join(SCRIPT_DIR, "powerpoint-mac-bridge.py");
+const OOXML_STATE_DIR = String(process.env.SCIENTIFIC_ILLUSTRATOR_STATE_DIR || process.env.SCIENTIFIC_ILLUSTRATOR_MAC_DIR || "").trim()
+  || path.join(os.homedir(), ".codex", "scientific-illustrator", "presentations", "sessions", `${process.pid}-${Date.now().toString(36)}`);
 const MAX_BUFFER = 20 * 1024 * 1024;
 const officeJsBridge = getOfficeJsBridge();
 const VALID_BACKENDS = new Set(["auto", "officejs", "com", "ooxml"]);
@@ -26,7 +28,11 @@ let backendPreference = VALID_BACKENDS.has(String(process.env.SCIENTIFIC_ILLUSTR
 let focusPolicy = VALID_FOCUS_POLICIES.has(String(process.env.SCIENTIFIC_ILLUSTRATOR_FOCUS_POLICY || "preserve").toLowerCase())
   ? String(process.env.SCIENTIFIC_ILLUSTRATOR_FOCUS_POLICY || "preserve").toLowerCase()
   : "preserve";
+let hostPreference = ["auto", "powerpoint", "wps"].includes(String(process.env.SCIENTIFIC_ILLUSTRATOR_PPT_HOST || "auto").toLowerCase())
+  ? String(process.env.SCIENTIFIC_ILLUSTRATOR_PPT_HOST || "auto").toLowerCase()
+  : "auto";
 let lockedBackend = null;
+let lockedHost = null;
 let mutationCount = 0;
 
 const positionProperties = {
@@ -143,7 +149,7 @@ const tools = [
     inputSchema: {
       type: "object",
       properties: {
-        file_path: { type: "string", description: "Optional absolute path to an existing .pptx/.pptm/.ppsx file." },
+        file_path: { type: "string", description: "Optional absolute path to an existing presentation. The editable OOXML PowerPoint/WPS backend accepts .pptx only; Windows COM may edit .pptm/.ppsx, while OOXML permits those formats only for read-only inspection." },
         create_if_missing: { type: "boolean", default: true, description: "Create a blank presentation only when no file and no active deck are available." },
         read_only: { type: "boolean", default: false },
         visible: { type: "boolean", default: true },
@@ -197,11 +203,22 @@ const tools = [
   },
   {
     name: "powerpoint_activate_slide",
-    description: "Explicitly bring the presentation forward and make one slide active. Ordinary drawing commands preserve the user's current foreground application by default.",
+    description: "Explicitly bring the presentation forward and request one slide. File-backed WPS reports document-open verification separately because it cannot prove exact slide selection. Ordinary drawing preserves the foreground application by default.",
     inputSchema: {
       type: "object",
       required: ["slide_index"],
       properties: { slide_index: { type: "integer", minimum: 1 } },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "powerpoint_refresh",
+    description: "Flush the current editable OOXML working copy to the selected PowerPoint/WPS application. Reports dispatch, document-open, and reload verification separately and never labels an unverified WPS reload as successful.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        focus_policy: { type: "string", enum: ["preserve", "foreground"], default: "preserve" },
+      },
       additionalProperties: false,
     },
   },
@@ -233,8 +250,10 @@ const tools = [
         ...textStyleProperties,
         fill_color: { type: "string", pattern: "^#?[0-9A-Fa-f]{6}$" },
         fill_transparency: { type: "number", minimum: 0, maximum: 100 },
-        line_color: { type: "string", pattern: "^#?[0-9A-Fa-f]{6}$" },
-        line_width: { type: "number", minimum: 0, maximum: 50 },
+        line_color: lineStyleProperties.line_color,
+        line_width: lineStyleProperties.line_width,
+        line_transparency: lineStyleProperties.line_transparency,
+        line_dash: lineStyleProperties.line_dash,
         ...textFrameProperties,
         pause_after_ms: { type: "integer", minimum: 0, maximum: 10000, default: 350 },
       },
@@ -258,8 +277,10 @@ const tools = [
         rotation: { type: "number", minimum: -360, maximum: 360 },
         fill_color: { type: "string", pattern: "^#?[0-9A-Fa-f]{6}$" },
         fill_transparency: { type: "number", minimum: 0, maximum: 100 },
-        line_color: { type: "string", pattern: "^#?[0-9A-Fa-f]{6}$" },
-        line_width: { type: "number", minimum: 0, maximum: 50 },
+        line_color: lineStyleProperties.line_color,
+        line_width: lineStyleProperties.line_width,
+        line_transparency: lineStyleProperties.line_transparency,
+        line_dash: lineStyleProperties.line_dash,
         ...textStyleProperties,
         ...textFrameProperties,
         pause_after_ms: { type: "integer", minimum: 0, maximum: 10000, default: 350 },
@@ -330,8 +351,8 @@ const tools = [
         name: { type: "string" },
         source_name: { type: "string" },
         target_name: { type: "string" },
-        source_site: { type: "integer", minimum: 1, default: 1 },
-        target_site: { type: "integer", minimum: 1, default: 1 },
+        source_site: { type: "integer", minimum: 1, description: "Optional connection-site index. The OOXML backend chooses the nearest top/right/bottom/left side when omitted." },
+        target_site: { type: "integer", minimum: 1, description: "Optional connection-site index. The OOXML backend chooses the nearest top/right/bottom/left side when omitted." },
         connector_type: { type: "string", enum: ["straight", "elbow", "curve"], default: "elbow" },
         ...lineStyleProperties,
         end_arrow: { type: "string", enum: ["none", "open", "triangle", "stealth", "diamond", "oval"], default: "triangle" },
@@ -359,6 +380,7 @@ const tools = [
         ...positionProperties,
         ...textStyleProperties,
         fill_color: { type: "string", pattern: "^#?[0-9A-Fa-f]{6}$" },
+        fill_transparency: { type: "number", minimum: 0, maximum: 100 },
         header_rows: { type: "integer", minimum: 0, maximum: 20, default: 1 },
         header_fill_color: { type: "string", pattern: "^#?[0-9A-Fa-f]{6}$" },
         header_font_color: { type: "string", pattern: "^#?[0-9A-Fa-f]{6}$" },
@@ -380,6 +402,7 @@ const tools = [
               text: { type: "string" },
               ...textStyleProperties,
               fill_color: { type: "string", pattern: "^#?[0-9A-Fa-f]{6}$" },
+              fill_transparency: { type: "number", minimum: 0, maximum: 100 },
               border_color: { type: "string", pattern: "^#?[0-9A-Fa-f]{6}$" },
               border_width: { type: "number", minimum: 0, maximum: 20 },
             },
@@ -405,6 +428,7 @@ const tools = [
         text: { type: "string" },
         ...textStyleProperties,
         fill_color: { type: "string", pattern: "^#?[0-9A-Fa-f]{6}$" },
+        fill_transparency: { type: "number", minimum: 0, maximum: 100 },
         border_color: { type: "string", pattern: "^#?[0-9A-Fa-f]{6}$" },
         border_width: { type: "number", minimum: 0, maximum: 20 },
         cell_margin: { type: "number", minimum: 0, maximum: 100 },
@@ -470,7 +494,7 @@ const tools = [
   },
   {
     name: "powerpoint_duplicate_shape",
-    description: "Duplicate an editable PowerPoint object and give it a stable semantic name. COM/OOXML can duplicate all supported object families; Office.js reconstructs tagged text/geometric shapes without flattening and asks callers to recreate unsupported families explicitly.",
+    description: "Duplicate an editable PowerPoint object and give it a stable semantic name. COM duplicates native objects; OOXML remaps nested shape and connector ids but requires native charts to be recreated from their series so data parts are not shared; Office.js reconstructs tagged text/geometric shapes and rejects unsupported families explicitly.",
     inputSchema: {
       type: "object",
       required: ["slide_index", "new_name"],
@@ -574,8 +598,7 @@ const tools = [
         rotation: { type: "number", minimum: -360, maximum: 360 },
         fill_color: { type: "string", pattern: "^#?[0-9A-Fa-f]{6}$" },
         fill_transparency: { type: "number", minimum: 0, maximum: 100 },
-        line_color: { type: "string", pattern: "^#?[0-9A-Fa-f]{6}$" },
-        line_width: { type: "number", minimum: 0, maximum: 50 },
+        ...lineStyleProperties,
         ...textStyleProperties,
         ...textFrameProperties,
         pause_after_ms: { type: "integer", minimum: 0, maximum: 10000, default: 350 },
@@ -596,11 +619,12 @@ const tools = [
   },
   {
     name: "powerpoint_draw_sequence",
-    description: "Apply a paced sequence of native slide, text, shape, line, connector, table, chart, image, grouping, layering, and update operations. In the Office.js backend every operation is acknowledged after context.sync so it is visibly committed before the next operation.",
+    description: "Apply a paced sequence of native slide, text, shape, line, connector, table, chart, image, grouping, layering, and update operations. Office.js acknowledges every context.sync; file-backed PowerPoint/WPS saves every operation but refreshes the application only at checkpoints by default.",
     inputSchema: {
       type: "object",
       required: ["operations"],
       properties: {
+        host_application: { type: "string", enum: ["auto", "powerpoint", "wps"], default: "auto", description: "Target application for every operation in the sequence. Set wps explicitly when testing or drawing in WPS Presentation." },
         operations: {
           type: "array",
           minItems: 1,
@@ -613,7 +637,7 @@ const tools = [
           },
         },
         step_delay_ms: { type: "integer", minimum: 0, maximum: 10000, default: 350 },
-        pacing_mode: { type: "string", enum: ["per_object", "checkpoint", "fast"], default: "per_object", description: "per_object preserves the requested delay after every context.sync; checkpoint delays only at checkpoint_size boundaries; fast uses no additional delay while still awaiting every context.sync." },
+        pacing_mode: { type: "string", enum: ["per_object", "checkpoint", "fast"], default: "checkpoint", description: "Office.js always awaits every context.sync. For file-backed WPS/PowerPoint, per_object refreshes after every object, checkpoint refreshes at checkpoint_size boundaries, and fast refreshes once at the end." },
         checkpoint_size: { type: "integer", minimum: 1, maximum: 100, default: 10 },
       },
       additionalProperties: false,
@@ -630,6 +654,7 @@ const tools = [
         output_path: { type: "string", description: "Absolute .png/.jpg output path." },
         width: { type: "integer", minimum: 100, maximum: 10000, default: 1920 },
         height: { type: "integer", minimum: 100, maximum: 10000, default: 1080 },
+        preserve_aspect_ratio: { type: "boolean", default: true, description: "Fit inside width/height without stretching. If height is omitted, derive it from the slide aspect ratio." },
         overwrite: { type: "boolean", default: false },
       },
       additionalProperties: false,
@@ -708,21 +733,32 @@ let cachedOoxmlPython;
 async function ooxmlPythonExecutable() {
   if (cachedOoxmlPython) return cachedOoxmlPython;
   const candidates = [
-    process.env.SCIENTIFIC_ILLUSTRATOR_PYTHON,
-    path.join(SCRIPT_DIR, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python3"),
-    path.join(os.homedir(), ".cache", "codex-runtimes", "codex-primary-runtime", "dependencies", "python", "bin", "python3"),
-    process.platform === "win32" ? "python.exe" : "python3",
-    process.platform === "win32" ? "py.exe" : "/opt/homebrew/bin/python3",
-    process.platform === "win32" ? null : "/usr/local/bin/python3",
-  ].filter(Boolean);
+    { executable: process.env.SCIENTIFIC_ILLUSTRATOR_PYTHON, args: [] },
+    { executable: path.join(SCRIPT_DIR, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python3"), args: [] },
+    {
+      executable: process.platform === "win32"
+        ? path.join(os.homedir(), ".cache", "codex-runtimes", "codex-primary-runtime", "dependencies", "python", "python.exe")
+        : path.join(os.homedir(), ".cache", "codex-runtimes", "codex-primary-runtime", "dependencies", "python", "bin", "python3"),
+      args: [],
+    },
+    {
+      executable: process.platform === "win32"
+        ? path.join(os.homedir(), ".cache", "codex-runtimes", "codex-primary-runtime", "dependencies", "python", "bin", "python.exe")
+        : null,
+      args: [],
+    },
+    { executable: process.platform === "win32" ? "python.exe" : "python3", args: [] },
+    { executable: process.platform === "win32" ? "py.exe" : "/opt/homebrew/bin/python3", args: process.platform === "win32" ? ["-3"] : [] },
+    { executable: process.platform === "win32" ? null : "/usr/local/bin/python3", args: [] },
+  ].filter((candidate) => candidate.executable);
   const failures = [];
   for (const candidate of candidates) {
     try {
-      await execFileAsync(candidate, ["-c", "import pptx; print(pptx.__version__)"], { encoding: "utf8", maxBuffer: 1024 * 1024 });
+      await execFileAsync(candidate.executable, [...candidate.args, "-c", "import pptx; print(pptx.__version__)"], { encoding: "utf8", maxBuffer: 1024 * 1024 });
       cachedOoxmlPython = candidate;
       return candidate;
     } catch (error) {
-      failures.push(`${candidate}: ${String(error.message || error).split("\n")[0]}`);
+      failures.push(`${candidate.executable}${candidate.args.length ? ` ${candidate.args.join(" ")}` : ""}: ${String(error.message || error).split("\n")[0]}`);
     }
   }
   throw new Error(`The PowerPoint/WPS OOXML backend requires Python with python-pptx. Run install.sh on macOS/Linux or set SCIENTIFIC_ILLUSTRATOR_PYTHON. Checked: ${failures.join("; ")}`);
@@ -731,12 +767,17 @@ async function ooxmlPythonExecutable() {
 async function runOoxmlBridge(action, args = {}) {
   if (!existsSync(OOXML_BRIDGE_PATH)) throw new Error(`OOXML presentation bridge is missing: ${OOXML_BRIDGE_PATH}`);
   const payload = Buffer.from(JSON.stringify({ action, arguments: args }), "utf8").toString("base64");
-  const executable = await ooxmlPythonExecutable();
+  const launcher = await ooxmlPythonExecutable();
   try {
-    const { stdout } = await execFileAsync(executable, [OOXML_BRIDGE_PATH, payload], {
+    const { stdout } = await execFileAsync(launcher.executable, [...launcher.args, OOXML_BRIDGE_PATH, payload], {
       encoding: "utf8",
       maxBuffer: MAX_BUFFER,
-      env: { ...process.env, SCIENTIFIC_ILLUSTRATOR_FOCUS_POLICY: String(args.focus_policy || focusPolicy) },
+      env: {
+        ...process.env,
+        SCIENTIFIC_ILLUSTRATOR_STATE_DIR: OOXML_STATE_DIR,
+        SCIENTIFIC_ILLUSTRATOR_FOCUS_POLICY: String(args.focus_policy || focusPolicy),
+        SCIENTIFIC_ILLUSTRATOR_DEFER_REFRESH: args.defer_refresh === true ? "1" : "0",
+      },
     });
     const text = stdout.trim();
     if (!text) throw new Error("PowerPoint/WPS OOXML bridge returned no JSON.");
@@ -769,7 +810,9 @@ const MUTATING_ACTIONS = new Set([
 const BACKEND_LOCKING_ACTIONS = new Set([...MUTATING_ACTIONS, "launch", "new_presentation", "save", "close_presentation", "quit_application"]);
 
 function requestedHost(args = {}) {
-  return String(args.host_application || process.env.SCIENTIFIC_ILLUSTRATOR_PPT_HOST || "auto").trim().toLowerCase();
+  const host = String(args.host_application || hostPreference || "auto").trim().toLowerCase();
+  if (!["auto", "powerpoint", "wps"].includes(host)) throw new Error(`Unknown host_application: ${host}`);
+  return host;
 }
 
 async function officeJsStatus(waitForConnectionMs = 0) {
@@ -861,7 +904,17 @@ async function runComBridge(action, args = {}) {
 
 async function resolveBackend(action, args = {}) {
   const host = requestedHost(args);
-  if (lockedBackend) return lockedBackend;
+  if (lockedBackend) {
+    if (host !== "auto" && lockedHost && host !== lockedHost) {
+      throw new Error(`This presentation session is locked to ${lockedHost} through ${lockedBackend}, but ${host} was requested. Start a new Codex task before switching target applications.`);
+    }
+    if (host === "wps" && lockedBackend !== "ooxml") {
+      throw new Error(`This presentation session is locked to ${lockedBackend}, which cannot control WPS Presentation. Start a new Codex task and select host_application=wps before editing.`);
+    }
+    if (args.host_application !== undefined) hostPreference = host;
+    return lockedBackend;
+  }
+  if (args.host_application !== undefined) hostPreference = host;
   if (host === "wps") {
     if (backendPreference === "officejs" || backendPreference === "com") throw new Error(`Backend ${backendPreference} cannot control WPS Presentation. Select ooxml or auto.`);
     return "ooxml";
@@ -885,14 +938,47 @@ async function resolveBackend(action, args = {}) {
   return "ooxml";
 }
 
-async function runBridge(action, args = {}) {
+async function runBridge(action, args = {}, forcedBackend = null) {
   const effectiveArgs = { ...args, focus_policy: args.focus_policy || focusPolicy };
-  const backend = await resolveBackend(action, effectiveArgs);
+  let requested = requestedHost(effectiveArgs);
+  if (effectiveArgs.host_application === undefined && requested !== "auto") effectiveArgs.host_application = requested;
+  const resolvedBackend = await resolveBackend(action, effectiveArgs);
+  if (forcedBackend && forcedBackend !== resolvedBackend) {
+    throw new Error(`Sequence backend ${forcedBackend} cannot satisfy the requested ${resolvedBackend} route. Start a new task with one target application and backend.`);
+  }
+  const backend = forcedBackend || resolvedBackend;
+  if (requested === "wps" && backend !== "ooxml") throw new Error(`Backend ${backend} cannot control WPS Presentation.`);
+
+  // An OOXML mutation requested with host=auto still needs a concrete target
+  // before the first byte is written. Otherwise a later explicit WPS request
+  // could reuse a working copy that was silently created for PowerPoint.
+  if (backend === "ooxml" && requested === "auto" && !lockedHost && BACKEND_LOCKING_ACTIONS.has(action)) {
+    const preflight = await runOoxmlBridge("status", effectiveArgs);
+    const detectedHost = String(preflight?.target_application || preflight?.host_application || "").trim().toLowerCase();
+    if (!new Set(["powerpoint", "wps"]).has(detectedHost)) {
+      throw new Error("The OOXML backend could not resolve host_application=auto to PowerPoint or WPS before mutation.");
+    }
+    requested = detectedHost;
+    effectiveArgs.host_application = detectedHost;
+  }
+  if (effectiveArgs.host_application !== undefined) hostPreference = requested;
   let value;
   if (backend === "officejs") value = await runOfficeJsBridge(action, effectiveArgs);
   else if (backend === "com") value = await runComBridge(action, effectiveArgs);
   else value = await runOoxmlBridge(action, effectiveArgs);
-  if (BACKEND_LOCKING_ACTIONS.has(action)) lockedBackend = backend;
+  if (BACKEND_LOCKING_ACTIONS.has(action)) {
+    lockedBackend = backend;
+    const reportedHost = String(value?.target_application || value?.host_application || "").trim().toLowerCase();
+    const selectedHost = reportedHost === "wps" || reportedHost === "powerpoint"
+      ? reportedHost
+      : backend === "com" || backend === "officejs"
+        ? "powerpoint"
+        : requested === "auto" ? null : requested;
+    if (lockedHost && selectedHost && lockedHost !== selectedHost) {
+      throw new Error(`Backend response targeted ${selectedHost}, but this session is locked to ${lockedHost}. Start a new Codex task; no further edits will be dispatched.`);
+    }
+    lockedHost = lockedHost || selectedHost;
+  }
   if (MUTATING_ACTIONS.has(action)) mutationCount += 1;
   if (value && typeof value === "object") {
     value.focus_policy = focusPolicy;
@@ -900,6 +986,8 @@ async function runBridge(action, args = {}) {
       selected: backend,
       preference: backendPreference,
       locked: lockedBackend,
+      locked_host: lockedHost,
+      host_preference: hostPreference,
       mutation_count: mutationCount,
     };
     if (action === "status" || action === "capabilities") {
@@ -935,32 +1023,85 @@ async function runSequence(args) {
     activate_slide: "activate_slide",
   };
   const requestedDelay = args.step_delay_ms ?? 350;
-  const pacingMode = args.pacing_mode || "per_object";
+  const pacingMode = args.pacing_mode || "checkpoint";
   const checkpointSize = args.checkpoint_size || 10;
+  const sequenceHost = requestedHost(args);
+  const sequenceBackend = await resolveBackend("status", args);
   const results = [];
-  for (let index = 0; index < args.operations.length; index += 1) {
-    const operation = { ...args.operations[index] };
-    const type = operation.type;
-    delete operation.type;
-    if (type === "wait") {
-      const waitMs = Math.max(0, Math.min(10000, operation.ms ?? requestedDelay));
-      await sleep(waitMs);
-      results.push({ index, type, waited_ms: waitMs });
-      continue;
+  const fileRefreshes = [];
+  let pendingFileRefresh = false;
+  let appliedObjects = 0;
+
+  const flushFileRefresh = async (reason) => {
+    if (sequenceBackend !== "ooxml" || !pendingFileRefresh) return;
+    const result = await runBridge("refresh", { focus_policy: focusPolicy, host_application: lockedHost || args.host_application });
+    fileRefreshes.push({ reason, after_operation_count: appliedObjects, result });
+    pendingFileRefresh = false;
+  };
+
+  try {
+    for (let index = 0; index < args.operations.length; index += 1) {
+      const operation = { ...args.operations[index] };
+      const type = operation.type;
+      delete operation.type;
+      if (type === "wait") {
+        if (pacingMode !== "fast") await flushFileRefresh("before_wait");
+        const waitMs = Math.max(0, Math.min(10000, operation.ms ?? requestedDelay));
+        await sleep(waitMs);
+        results.push({ index, type, waited_ms: waitMs });
+        continue;
+      }
+      const action = actionMap[type];
+      if (!action) throw new Error(`Unsupported sequence operation at index ${index}: ${type}`);
+      if (operation.host_application !== undefined) {
+        const operationHost = requestedHost(operation);
+        const requiredHost = lockedHost || (sequenceHost === "auto" ? null : sequenceHost);
+        if (requiredHost && operationHost !== "auto" && operationHost !== requiredHost) {
+          throw new Error(`Sequence operation ${index} requests ${operationHost}, but the sequence target is ${requiredHost}. No object was dispatched for this operation.`);
+        }
+      }
+      operation.pause_after_ms = 0;
+      if (operation.host_application === undefined) {
+        const inheritedHost = lockedHost || (sequenceHost === "auto" ? null : sequenceHost);
+        if (inheritedHost) operation.host_application = inheritedHost;
+      }
+      if (sequenceBackend === "ooxml" && action !== "activate_slide") operation.defer_refresh = true;
+      results.push({ index, type, result: await runBridge(action, operation, sequenceBackend) });
+      appliedObjects += 1;
+      if (sequenceBackend === "ooxml") {
+        if (action === "activate_slide") {
+          pendingFileRefresh = false;
+        } else {
+          pendingFileRefresh = true;
+          const checkpointReached = pacingMode === "per_object" || (pacingMode === "checkpoint" && appliedObjects % checkpointSize === 0);
+          if (checkpointReached) await flushFileRefresh(pacingMode === "per_object" ? "per_object" : "checkpoint");
+        }
+      }
+      const shouldDelay = pacingMode === "per_object" || (pacingMode === "checkpoint" && appliedObjects % checkpointSize === 0);
+      const delay = pacingMode === "fast" || !shouldDelay ? 0 : requestedDelay;
+      if (delay > 0) await sleep(delay);
     }
-    const action = actionMap[type];
-    if (!action) throw new Error(`Unsupported sequence operation at index ${index}: ${type}`);
-    operation.pause_after_ms = 0;
-    results.push({ index, type, result: await runBridge(action, operation) });
-    const shouldDelay = pacingMode === "per_object" || (pacingMode === "checkpoint" && ((index + 1) % checkpointSize === 0 || index === args.operations.length - 1));
-    const delay = pacingMode === "fast" || !shouldDelay ? 0 : requestedDelay;
-    if (delay > 0) await sleep(delay);
+    await flushFileRefresh("sequence_end");
+  } catch (error) {
+    try {
+      await flushFileRefresh("error_recovery");
+    } catch (refreshError) {
+      error.message = `${error.message}; final OOXML refresh also failed: ${refreshError.message}`;
+    }
+    throw error;
   }
   return {
     operations_applied: results.length,
+    object_operations_applied: appliedObjects,
+    backend: sequenceBackend,
+    target_application: lockedHost,
     pacing_mode: pacingMode,
     step_delay_ms: requestedDelay,
-    context_sync_acknowledged_per_operation: lockedBackend === "officejs",
+    checkpoint_size: checkpointSize,
+    context_sync_acknowledged_per_operation: sequenceBackend === "officejs",
+    file_refresh_strategy: sequenceBackend === "ooxml" ? pacingMode : "not-applicable",
+    file_refresh_count: fileRefreshes.length,
+    file_refreshes: fileRefreshes,
     results,
   };
 }
@@ -991,7 +1132,9 @@ async function handleTool(name, args = {}) {
     return {
       value: {
         backend_preference: backendPreference,
+        host_preference: hostPreference,
         locked_backend: lockedBackend,
+        locked_host: lockedHost,
         mutation_count: mutationCount,
         officejs_live: requested === "officejs" ? await officeJsStatus(0) : officeJsBridge.status(),
       },
@@ -1004,13 +1147,31 @@ async function handleTool(name, args = {}) {
     return {
       value: {
         focus_policy: focusPolicy,
+        host_preference: hostPreference,
         behavior: focusPolicy === "preserve"
           ? "Ordinary drawing commands keep the user's current foreground application focused. powerpoint_activate_slide is still an explicit foreground action."
           : "Presentation windows may be foregrounded after drawing commands so object-by-object progress remains visible.",
         locked_backend: lockedBackend,
+        locked_host: lockedHost,
         mutation_count: mutationCount,
       },
     };
+  }
+  if (name === "powerpoint_refresh") {
+    const selected = await resolveBackend("status", args);
+    if (selected !== "ooxml") {
+      return {
+        value: {
+          backend: selected,
+          refresh_required: false,
+          refresh_verified: true,
+          note: selected === "officejs"
+            ? "Office.js commits each object through context.sync; no file-backed refresh is required."
+            : "Windows PowerPoint COM edits the live presentation directly; no file-backed refresh is required.",
+        },
+      };
+    }
+    return { value: await runBridge("refresh", args) };
   }
   const actionMap = {
     powerpoint_status: "status",
@@ -1020,6 +1181,7 @@ async function handleTool(name, args = {}) {
     powerpoint_inspect: "inspect",
     powerpoint_audit_figure: "audit_figure",
     powerpoint_activate_slide: "activate_slide",
+    powerpoint_refresh: "refresh",
     powerpoint_add_slide: "add_slide",
     powerpoint_add_textbox: "add_textbox",
     powerpoint_add_shape: "add_shape",
@@ -1109,8 +1271,7 @@ async function handleMessage(message) {
   return rpcError(id, -32601, `Method not found: ${method}`);
 }
 
-const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
-rl.on("line", async (line) => {
+async function processInputLine(line) {
   if (!line.trim()) return;
   let message;
   try {
@@ -1125,6 +1286,14 @@ rl.on("line", async (line) => {
   } catch (error) {
     process.stdout.write(`${JSON.stringify(rpcError(message.id, -32603, "Internal error", error.message))}\n`);
   }
+}
+
+const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
+let requestQueue = Promise.resolve();
+rl.on("line", (line) => {
+  requestQueue = requestQueue.then(() => processInputLine(line)).catch((error) => {
+    process.stderr.write(`[${SERVER_NAME}] request queue error: ${error.stack || error.message}\n`);
+  });
 });
 
 process.on("uncaughtException", (error) => process.stderr.write(`[${SERVER_NAME}] ${error.stack || error.message}\n`));

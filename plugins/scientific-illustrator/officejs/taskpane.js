@@ -167,7 +167,21 @@
     }
   }
 
-  function applyLine(shape, args, fallbackColor = "#000000", fallbackWidth = 1) {
+  function applyLine(shape, args, fallbackColor = "#000000", fallbackWidth = 1, partial = false) {
+    if (partial) {
+      if ((args.line_width !== undefined && number(args.line_width) <= 0) || args.line_color === "none") {
+        shape.lineFormat.visible = false;
+        return;
+      }
+      if (args.line_color !== undefined || args.line_width !== undefined) shape.lineFormat.visible = true;
+      if (args.line_color !== undefined) shape.lineFormat.color = color(args.line_color, fallbackColor);
+      if (args.line_width !== undefined) shape.lineFormat.weight = number(args.line_width);
+      if (args.line_dash !== undefined) shape.lineFormat.dashStyle = lineDash(args.line_dash);
+      if (args.line_transparency !== undefined) {
+        shape.lineFormat.transparency = Math.max(0, Math.min(1, number(args.line_transparency) / 100));
+      }
+      return;
+    }
     const width = args.line_width === undefined ? fallbackWidth : number(args.line_width);
     if (width <= 0 || args.line_color === "none") {
       shape.lineFormat.visible = false;
@@ -235,9 +249,21 @@
     await context.sync();
     const byName = args.shape_name !== undefined ? String(args.shape_name) : null;
     const byId = args.shape_id !== undefined ? String(args.shape_id) : null;
-    const shape = shapes.items.find((item) => (byName !== null && item.name === byName) || (byId !== null && String(item.id) === byId));
-    if (!shape) throw new Error(`Shape not found on slide ${args.slide_index}: ${byName || byId}`);
+    const matches = shapes.items.filter((item) => (byName !== null && item.name === byName) || (byId !== null && String(item.id) === byId));
+    if (matches.length === 0) throw new Error(`Shape not found on slide ${args.slide_index}: ${byName || byId}`);
+    if (matches.length > 1) throw new Error(`Shape target is ambiguous on slide ${args.slide_index}: ${byName || byId}. Rename duplicate semantic objects before editing.`);
+    const shape = matches[0];
     return { slide, shapes, shape };
+  }
+
+  async function assertShapeNameAvailable(context, slide, name, excludeId = null) {
+    if (name === undefined || name === null || String(name).trim() === "") return;
+    const shapes = slide.shapes;
+    shapes.load("items/id,items/name");
+    await context.sync();
+    const wanted = String(name).trim().toLowerCase();
+    const matches = shapes.items.filter((item) => item.name.trim().toLowerCase() === wanted && String(item.id) !== String(excludeId));
+    if (matches.length) throw new Error(`Shape name already exists on this slide: ${name}`);
   }
 
   async function statusAction() {
@@ -375,6 +401,11 @@
     const slideHeight = inventory.slide_height || 540;
     const slideArea = Math.max(1, slideWidth * slideHeight);
     const maxFindings = Number(args.max_findings || 300);
+    const nameCounts = new Map();
+    for (const shape of slide.shapes) nameCounts.set(shape.shape_name, (nameCounts.get(shape.shape_name) || 0) + 1);
+    for (const [shapeName, count] of nameCounts) {
+      if (count > 1) findings.push({ severity: "hard", category: "duplicate_name", shape_name: shapeName, message: `Semantic shape name occurs ${count} times and makes later corrections ambiguous.` });
+    }
     await PowerPoint.run(async (context) => {
       const liveSlide = getSlide(context, args.slide_index);
       const shapes = liveSlide.shapes;
@@ -449,7 +480,9 @@
 
   async function addTextboxAction(args) {
     return PowerPoint.run(async (context) => {
-      const shape = getSlide(context, args.slide_index).shapes.addTextBox(String(args.text), shapeOptions(args));
+      const slide = getSlide(context, args.slide_index);
+      await assertShapeNameAvailable(context, slide, args.name);
+      const shape = slide.shapes.addTextBox(String(args.text), shapeOptions(args));
       if (args.name) shape.name = String(args.name);
       applyFill(shape, args, null);
       applyLine(shape, args, "#000000", 0);
@@ -465,7 +498,9 @@
     if (args.shape_type_id !== undefined && !args.shape) throw new Error("Office.js requires a shape name, not a COM numeric shape_type_id. Use an auto_shapes plugin_name from powerpoint_get_capabilities.");
     return PowerPoint.run(async (context) => {
       const shapeType = titleCaseEnum(args.shape, "Rectangle");
-      const shape = getSlide(context, args.slide_index).shapes.addGeometricShape(shapeType, shapeOptions(args));
+      const slide = getSlide(context, args.slide_index);
+      await assertShapeNameAvailable(context, slide, args.name);
+      const shape = slide.shapes.addGeometricShape(shapeType, shapeOptions(args));
       if (args.name) shape.name = String(args.name);
       if (args.rotation !== undefined) {
         if (!supports("1.10")) throw new Error("Shape rotation requires PowerPointApi 1.10.");
@@ -534,6 +569,7 @@
     if (!supports("1.8")) throw new Error("Editable Office.js arrow groups require PowerPointApi 1.8.");
     const slide = getSlide(context, args.slide_index);
     const name = String(args.name || `${kind}-${Date.now()}`);
+    await assertShapeNameAvailable(context, slide, name);
     const routedPoints = points.filter((point, index) => index === 0 || Math.hypot(point.x - points[index - 1].x, point.y - points[index - 1].y) >= 0.01);
     if (routedPoints.length < 2) throw new Error("Line endpoints must differ.");
     const members = [];
@@ -610,8 +646,9 @@
     const border = args.border_color || args.border_width !== undefined ? {
       color: color(args.border_color, "#000000"), weight: number(args.border_width, 1), dashStyle: "Solid",
     } : undefined;
+    const fillRequested = args.fill_color !== undefined || args.fill_transparency !== undefined;
     return {
-      ...(args.fill_color ? { fill: { color: color(args.fill_color), transparency: 0 } } : {}),
+      ...(fillRequested ? { fill: { color: color(args.fill_color, "#ffffff"), transparency: Math.max(0, Math.min(1, number(args.fill_transparency, 0) / 100)) } } : {}),
       font: {
         ...(args.font_name ? { name: args.font_name } : {}),
         ...(args.font_size ? { size: number(args.font_size) } : {}),
@@ -628,9 +665,20 @@
 
   async function addTableAction(args) {
     if (!supports("1.8")) throw new Error("Native Office.js tables require PowerPointApi 1.8.");
+    const requestedRows = Number(args.rows);
+    const requestedColumns = Number(args.columns);
+    if ((args.data || []).length > requestedRows) throw new Error(`Table data has ${args.data.length} rows but rows=${requestedRows}.`);
+    for (let row = 0; row < (args.data || []).length; row += 1) {
+      if ((args.data[row] || []).length > requestedColumns) throw new Error(`Table data row ${row + 1} has more than columns=${requestedColumns} values.`);
+    }
+    for (const style of args.cell_styles || []) {
+      if (style.row < 1 || style.row > requestedRows || style.column < 1 || style.column > requestedColumns) {
+        throw new Error(`cell_styles entry (${style.row},${style.column}) is outside the table bounds ${requestedRows} x ${requestedColumns}.`);
+      }
+    }
     return PowerPoint.run(async (context) => {
-      const rows = Number(args.rows);
-      const columns = Number(args.columns);
+      const rows = requestedRows;
+      const columns = requestedColumns;
       const values = Array.from({ length: rows }, (_, row) => Array.from({ length: columns }, (_, column) => String(args.data?.[row]?.[column] ?? "")));
       const specific = Array.from({ length: rows }, () => Array.from({ length: columns }, () => ({})));
       for (let row = 0; row < Math.min(rows, Number(args.header_rows ?? 1)); row += 1) {
@@ -638,11 +686,21 @@
           specific[row][column] = tableCellProperties({ ...args, fill_color: args.header_fill_color || args.fill_color, font_color: args.header_font_color || args.font_color, bold: args.header_bold ?? true });
         }
       }
+      if (args.banded_rows === true && args.band_fill_color !== undefined) {
+        const headerRows = Math.min(rows, Number(args.header_rows ?? 1));
+        for (let row = headerRows; row < rows; row += 2) {
+          for (let column = 0; column < columns; column += 1) {
+            specific[row][column] = tableCellProperties({ ...args, fill_color: args.band_fill_color });
+          }
+        }
+      }
       for (const style of args.cell_styles || []) {
-        if (style.row >= 1 && style.row <= rows && style.column >= 1 && style.column <= columns) specific[style.row - 1][style.column - 1] = tableCellProperties({ ...args, ...style });
+        specific[style.row - 1][style.column - 1] = tableCellProperties({ ...args, ...style });
       }
       const options = { ...shapeOptions(args), values, uniformCellProperties: tableCellProperties(args), specificCellProperties: specific };
-      const shape = getSlide(context, args.slide_index).shapes.addTable(rows, columns, options);
+      const slide = getSlide(context, args.slide_index);
+      await assertShapeNameAvailable(context, slide, args.name);
+      const shape = slide.shapes.addTable(rows, columns, options);
       if (args.name) shape.name = String(args.name);
       tagShape(shape, "table");
       loadShapeResult(shape);
@@ -653,6 +711,9 @@
 
   async function updateTableCellAction(args) {
     if (!supports("1.8")) throw new Error("Native Office.js tables require PowerPointApi 1.8.");
+    if (args.border_color !== undefined || args.border_width !== undefined) {
+      throw new Error("Office.js table-cell border updates are not exposed reliably by this adapter. Recreate the native table with the requested borders or use COM/OOXML.");
+    }
     return PowerPoint.run(async (context) => {
       const { shape } = await findShape(context, args);
       const table = shape.getTable();
@@ -670,6 +731,7 @@
         if (args.alignment !== undefined) cell.horizontalAlignment = horizontalAlignment(args.alignment);
         if (args.vertical_alignment !== undefined) cell.verticalAlignment = verticalAlignment(args.vertical_alignment);
         if (args.fill_color !== undefined) cell.fill.setSolidColor(color(args.fill_color));
+        if (args.fill_transparency !== undefined) cell.fill.transparency = Math.max(0, Math.min(1, number(args.fill_transparency) / 100));
         if (args.cell_margin !== undefined) cell.margins.set({ top: number(args.cell_margin), right: number(args.cell_margin), bottom: number(args.cell_margin), left: number(args.cell_margin) });
       }
       await context.sync();
@@ -682,6 +744,16 @@
     return PowerPoint.run(async (context) => {
       const { shape } = await findShape(context, args);
       const table = shape.getTable();
+      table.columns.load("items");
+      table.rows.load("items");
+      await context.sync();
+      if (args.column_widths !== undefined && args.column_widths.length !== table.columns.items.length) {
+        throw new Error(`column_widths count ${args.column_widths.length} does not match table column count ${table.columns.items.length}.`);
+      }
+      if (args.row_heights !== undefined && args.row_heights.length !== table.rows.items.length) {
+        throw new Error(`row_heights count ${args.row_heights.length} does not match table row count ${table.rows.items.length}.`);
+      }
+      if (args.column_widths === undefined && args.row_heights === undefined) throw new Error("Provide column_widths and/or row_heights.");
       for (let index = 0; index < (args.column_widths || []).length; index += 1) table.columns.getItemAt(index).width = number(args.column_widths[index]);
       for (let index = 0; index < (args.row_heights || []).length; index += 1) table.rows.getItemAt(index).height = number(args.row_heights[index]);
       await context.sync();
@@ -698,31 +770,78 @@
     return shape;
   }
 
+  function normalizeChartType(value) {
+    return String(value || "column_clustered")
+      .replace(/^xl/i, "")
+      .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+      .replace(/[^A-Za-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .toLowerCase();
+  }
+
   async function addChartAction(args) {
     if (!supports("1.8") || !supports("1.10")) throw new Error("Live editable chart composites require PowerPointApi 1.10.");
+    if (args.chart_type_id !== undefined) throw new Error("Office.js chart composites require a named chart_type; numeric COM chart_type_id values are not portable.");
+    const chartType = normalizeChartType(args.chart_type);
+    const supportedTypes = new Set(["column", "column_clustered", "line", "line_markers", "scatter", "xy_scatter"]);
+    if (!supportedTypes.has(chartType)) {
+      throw new Error(`Office.js chart composite does not implement '${args.chart_type}'. Use column_clustered, line, line_markers, or scatter; use COM/OOXML for other native chart types.`);
+    }
+    if (args.has_legend !== false && args.legend_position !== undefined && args.legend_position !== "right") {
+      throw new Error("Office.js chart composites currently support only a right-side legend. Use COM/OOXML for other native legend positions.");
+    }
+    if (args.chart_style !== undefined) throw new Error("chart_style is a native chart theme id and cannot be applied to an Office.js shape composite. Style its editable members explicitly or use COM/OOXML.");
+    if (!Array.isArray(args.categories) || args.categories.length === 0 || !Array.isArray(args.series) || args.series.length === 0) {
+      throw new Error("Chart categories and series must be non-empty arrays.");
+    }
+    for (const series of args.series) {
+      if (!Array.isArray(series.values) || series.values.length !== args.categories.length) {
+        throw new Error(`Chart series '${series.name}' has ${series.values?.length ?? 0} values but there are ${args.categories.length} categories.`);
+      }
+      if (series.values.some((value) => !Number.isFinite(Number(value)))) throw new Error(`Chart series '${series.name}' contains a non-numeric value.`);
+    }
+    const scatterXValues = chartType.includes("scatter") ? args.categories.map(Number) : null;
+    if (scatterXValues?.some((value) => !Number.isFinite(value))) throw new Error("Scatter-chart categories must be numeric x values.");
     return PowerPoint.run(async (context) => {
       const slide = getSlide(context, args.slide_index);
       const name = String(args.name || `chart-${Date.now()}`);
+      await assertShapeNameAvailable(context, slide, name);
       const members = [];
       const left = number(args.left), top = number(args.top), width = number(args.width), height = number(args.height);
       const titleHeight = args.title ? Math.min(30, height * 0.12) : 0;
       const legendWidth = args.has_legend === false ? 0 : Math.min(110, width * 0.23);
-      const plot = { left: left + 38, top: top + titleHeight + 8, width: width - 48 - legendWidth, height: height - titleHeight - 38 };
+      const valueAxisTitleWidth = args.value_axis_title ? 22 : 0;
+      const categoryAxisTitleHeight = args.category_axis_title ? 20 : 0;
+      const plot = { left: left + 38 + valueAxisTitleWidth, top: top + titleHeight + 8, width: width - 48 - legendWidth - valueAxisTitleWidth, height: height - titleHeight - 38 - categoryAxisTitleHeight };
       if (plot.width <= 20 || plot.height <= 20) throw new Error("Chart bounds are too small for an editable composite.");
       if (args.title) members.push(addChartText(slide, args.title, left, top, width, titleHeight || 24, 14, `${name}.title`));
       members.push(addLinePrimitive(slide, { x: plot.left, y: plot.top }, { x: plot.left, y: plot.top + plot.height }, { line_color: "#333333", line_width: 1 }, `${name}.axis.y`));
       members.push(addLinePrimitive(slide, { x: plot.left, y: plot.top + plot.height }, { x: plot.left + plot.width, y: plot.top + plot.height }, { line_color: "#333333", line_width: 1 }, `${name}.axis.x`));
+      if (args.value_axis_title) {
+        const axisTitle = addChartText(slide, args.value_axis_title, left + 11 - plot.height / 2, plot.top + plot.height / 2 - 9, plot.height, 18, 9, `${name}.axis.y.title`);
+        axisTitle.rotation = 270;
+        members.push(axisTitle);
+      }
+      if (args.category_axis_title) members.push(addChartText(slide, args.category_axis_title, plot.left, plot.top + plot.height + 21, plot.width, 18, 9, `${name}.axis.x.title`));
       const values = args.series.flatMap((series) => series.values.map(Number));
       const minValue = Math.min(0, ...values);
       const maxValue = Math.max(1, ...values);
       const range = Math.max(1e-9, maxValue - minValue);
       const yOf = (value) => plot.top + plot.height - ((Number(value) - minValue) / range) * plot.height;
-      const chartType = String(args.chart_type || "column_clustered").toLowerCase();
       const isLine = chartType.includes("line") || chartType.includes("scatter");
       const categoryCount = args.categories.length;
+      const scatterMinimum = scatterXValues ? Math.min(...scatterXValues) : 0;
+      const scatterMaximum = scatterXValues ? Math.max(...scatterXValues) : 1;
+      const xOf = (index) => {
+        if (scatterXValues) return scatterMaximum === scatterMinimum
+          ? plot.left + plot.width / 2
+          : plot.left + ((scatterXValues[index] - scatterMinimum) / (scatterMaximum - scatterMinimum)) * plot.width;
+        if (isLine) return plot.left + (categoryCount === 1 ? plot.width / 2 : index * plot.width / (categoryCount - 1));
+        return plot.left + (index + 0.5) * plot.width / categoryCount;
+      };
       if (isLine) {
         args.series.forEach((series, seriesIndex) => {
-          const points = series.values.map((value, index) => ({ x: plot.left + (categoryCount === 1 ? plot.width / 2 : index * plot.width / (categoryCount - 1)), y: yOf(value) }));
+          const points = series.values.map((value, index) => ({ x: xOf(index), y: yOf(value) }));
           for (let index = 0; index < points.length - 1; index += 1) members.push(addLinePrimitive(slide, points[index], points[index + 1], { line_color: palette[seriesIndex % palette.length], line_width: 2 }, `${name}.series.${seriesIndex + 1}.segment.${index + 1}`));
           for (let index = 0; index < points.length; index += 1) {
             const marker = slide.shapes.addGeometricShape("Ellipse", { left: points[index].x - 3, top: points[index].y - 3, width: 6, height: 6 });
@@ -737,7 +856,7 @@
         const groupWidth = categoryWidth * 0.72;
         const barWidth = groupWidth / args.series.length;
         args.series.forEach((series, seriesIndex) => series.values.forEach((value, categoryIndex) => {
-          const y = yOf(Math.max(0, value));
+          const y = yOf(value);
           const zeroY = yOf(0);
           const bar = slide.shapes.addGeometricShape("Rectangle", {
             left: plot.left + categoryIndex * categoryWidth + (categoryWidth - groupWidth) / 2 + seriesIndex * barWidth,
@@ -749,7 +868,8 @@
           members.push(bar);
         }));
       }
-      args.categories.forEach((category, index) => members.push(addChartText(slide, category, plot.left + index * plot.width / categoryCount, plot.top + plot.height + 3, plot.width / categoryCount, 18, 9, `${name}.category.${index + 1}`)));
+      const categoryLabelWidth = Math.max(20, plot.width / categoryCount);
+      args.categories.forEach((category, index) => members.push(addChartText(slide, category, xOf(index) - categoryLabelWidth / 2, plot.top + plot.height + 3, categoryLabelWidth, 18, 9, `${name}.category.${index + 1}`)));
       if (args.has_legend !== false) args.series.forEach((series, index) => {
         const swatch = slide.shapes.addGeometricShape("Rectangle", { left: plot.left + plot.width + 14, top: plot.top + index * 19, width: 9, height: 9 });
         swatch.name = `${name}.legend.swatch.${index + 1}`;
@@ -771,7 +891,9 @@
     if (args.atomic_raster_unit !== true || args.contains_reconstructable_content !== false) throw new Error("Images require atomic_raster_unit=true and contains_reconstructable_content=false.");
     if (!args.image_base64) throw new Error("The MCP bridge did not provide image_base64.");
     return PowerPoint.run(async (context) => {
-      const shape = getSlide(context, args.slide_index).shapes.addGeometricShape("Rectangle", shapeOptions(args));
+      const slide = getSlide(context, args.slide_index);
+      await assertShapeNameAvailable(context, slide, args.name);
+      const shape = slide.shapes.addGeometricShape("Rectangle", shapeOptions(args));
       if (args.name) shape.name = String(args.name);
       shape.fill.setImage(String(args.image_base64));
       shape.lineFormat.visible = false;
@@ -789,6 +911,7 @@
   async function duplicateShapeAction(args) {
     return PowerPoint.run(async (context) => {
       const { slide, shape } = await findShape(context, args);
+      await assertShapeNameAvailable(context, slide, args.new_name, shape.id);
       shape.load("id,name,type,left,top,width,height,fill/type,fill/foregroundColor,fill/transparency,lineFormat/color,lineFormat/weight,lineFormat/dashStyle,lineFormat/transparency");
       const kind = shape.tags.getItemOrNullObject("SI_KIND");
       const shapeType = shape.tags.getItemOrNullObject("SI_SHAPE_TYPE");
@@ -832,6 +955,7 @@
     if (!supports("1.8")) throw new Error("Office.js grouping requires PowerPointApi 1.8.");
     return PowerPoint.run(async (context) => {
       const slide = getSlide(context, args.slide_index);
+      await assertShapeNameAvailable(context, slide, args.name);
       const shapes = slide.shapes;
       shapes.load("items/id,items/name");
       await context.sync();
@@ -923,13 +1047,23 @@
   }
 
   async function updateShapeAction(args) {
+    if (args.start_arrow !== undefined || args.end_arrow !== undefined) {
+      throw new Error("Office.js cannot safely retarget arrowhead geometry in place. Delete and recreate the named line or connector with the requested arrowheads.");
+    }
     return PowerPoint.run(async (context) => {
-      const { shape } = await findShape(context, args);
-      if (args.new_name !== undefined) shape.name = String(args.new_name);
+      const { slide, shape } = await findShape(context, args);
+      if (args.new_name !== undefined) {
+        await assertShapeNameAvailable(context, slide, args.new_name, shape.id);
+        shape.name = String(args.new_name);
+      }
       for (const property of ["left", "top", "width", "height", "rotation"]) if (args[property] !== undefined) shape[property] = number(args[property]);
       if (args.fill_color !== undefined || args.fill_transparency !== undefined) applyFill(shape, args);
-      if (args.line_color !== undefined || args.line_width !== undefined || args.line_dash !== undefined || args.line_transparency !== undefined) applyLine(shape, args);
-      if (args.text !== undefined || args.font_name !== undefined || args.font_size !== undefined || args.font_color !== undefined || args.bold !== undefined || args.italic !== undefined || args.alignment !== undefined || args.vertical_alignment !== undefined) {
+      if (args.line_color !== undefined || args.line_width !== undefined || args.line_dash !== undefined || args.line_transparency !== undefined) applyLine(shape, args, "#000000", 1, true);
+      const textSettings = [
+        "text", "font_name", "font_size", "font_color", "bold", "italic", "alignment", "vertical_alignment",
+        "margin_left", "margin_right", "margin_top", "margin_bottom", "word_wrap", "text_autofit",
+      ];
+      if (textSettings.some((key) => args[key] !== undefined)) {
         if (!["TextBox", "GeometricShape"].includes(String(shape.type))) throw new Error("Target shape does not support editable text through this Office.js adapter.");
         applyText(shape, args, args.text);
       }
@@ -970,18 +1104,45 @@
 
   async function exportSlideAction(args) {
     if (!supports("1.8")) throw new Error("Live slide rendering requires PowerPointApi 1.8.");
-    const result = await PowerPoint.run(async (context) => {
+    if (!/\.(?:png|jpe?g)$/i.test(String(args.output_path || ""))) throw new Error("output_path must end with .png, .jpg, or .jpeg.");
+    const rendered = await PowerPoint.run(async (context) => {
       const slide = getSlide(context, args.slide_index);
-      const image = slide.getImageAsBase64({ width: Number(args.width || 1920), height: Number(args.height || 1080) });
+      const requestedWidth = Math.max(1, Math.round(number(args.width, 1920)));
+      const heightWasExplicit = args.height !== undefined;
+      const requestedHeight = Math.max(1, Math.round(heightWasExplicit ? number(args.height) : 1080));
+      const preserveAspectRatio = args.preserve_aspect_ratio !== false;
+      if (preserveAspectRatio && !supports("1.10")) {
+        throw new Error("Aspect-ratio-preserving Office.js export requires PowerPointApi 1.10 page-size metadata. Upgrade PowerPoint or pass preserve_aspect_ratio=false with explicit width and height.");
+      }
+      if (preserveAspectRatio) context.presentation.pageSetup.load("slideWidth,slideHeight");
       await context.sync();
-      return image.value;
+      let width = requestedWidth;
+      let height = requestedHeight;
+      if (preserveAspectRatio) {
+        const slideWidth = number(context.presentation.pageSetup.slideWidth);
+        const slideHeight = number(context.presentation.pageSetup.slideHeight);
+        if (slideWidth <= 0 || slideHeight <= 0) throw new Error("PowerPoint returned invalid slide dimensions for image export.");
+        if (heightWasExplicit) {
+          const scale = Math.min(requestedWidth / slideWidth, requestedHeight / slideHeight);
+          width = Math.max(1, Math.round(slideWidth * scale));
+          height = Math.max(1, Math.round(slideHeight * scale));
+        } else {
+          height = Math.max(1, Math.round(requestedWidth * slideHeight / slideWidth));
+        }
+      }
+      const image = slide.getImageAsBase64({ width, height });
+      await context.sync();
+      return { image_base64: image.value, requested_width: requestedWidth, requested_height: requestedHeight, width, height, aspect_ratio_preserved: preserveAspectRatio };
     });
     const jpeg = /\.jpe?g$/i.test(String(args.output_path || ""));
     return {
       slide_index: Number(args.slide_index),
-      image_base64: jpeg ? await imageToJpeg(result, Number(args.width || 1920), Number(args.height || 1080)) : result,
-      width: Number(args.width || 1920),
-      height: Number(args.height || 1080),
+      image_base64: jpeg ? await imageToJpeg(rendered.image_base64, rendered.width, rendered.height) : rendered.image_base64,
+      requested_width: rendered.requested_width,
+      requested_height: rendered.requested_height,
+      width: rendered.width,
+      height: rendered.height,
+      aspect_ratio_preserved: rendered.aspect_ratio_preserved,
       mime_type: jpeg ? "image/jpeg" : "image/png",
       renderer: "PowerPoint Office.js Slide.getImageAsBase64",
       backend: "officejs-context-sync",
@@ -991,6 +1152,7 @@
   async function saveAction(args) {
     if (!args.output_path) return { saved_in_place: false, backend: "officejs-context-sync", note: "Office.js cannot force a desktop Save command. Use output_path to export the current editable presentation, or save normally in PowerPoint." };
     if (String(args.format || "pptx").toLowerCase() === "pdf" || /\.pdf$/i.test(args.output_path)) throw new Error("Office.js cannot export PDF. Save PPTX first, then use PowerPoint or the OOXML renderer for PDF.");
+    if (!/\.pptx$/i.test(String(args.output_path))) throw new Error("Office.js editable presentation export requires a .pptx output_path.");
     if (!supports("1.10")) throw new Error("Editable PPTX export requires PowerPointApi 1.10.");
     return PowerPoint.run(async (context) => {
       const slides = context.presentation.slides;
