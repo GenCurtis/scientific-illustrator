@@ -80,8 +80,9 @@ class WpsBridgeReliabilityTests(unittest.TestCase):
         self.assertTrue(verified)
         command = runner.call_args.args[0]
         self.assertEqual(command[-1], "exact-deck.pptx")
-        self.assertTrue(command[-2].endswith("/tmp"))
-        self.assertTrue(command[-3].endswith("/tmp"))
+        expected_directory = Path("/tmp")
+        self.assertEqual(Path(command[-3]), expected_directory)
+        self.assertEqual(Path(command[-2]), expected_directory.resolve())
 
     def test_powerpoint_open_verification_timeout_is_unknown(self):
         with mock.patch.object(BRIDGE.sys, "platform", "darwin"), \
