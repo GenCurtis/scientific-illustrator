@@ -17,7 +17,7 @@ Require both backends to deliver the same semantic capabilities:
 - editable tables and regular charts: native in COM/OOXML PowerPoint, editable shape composites in Office.js PowerPoint or draw.io when their live APIs cannot insert a native chart;
 - stable object names/ids, duplication, grouping, z-order, exact alignment, and equal distribution;
 - one picture object per irreducible raster field, with all reconstructable overlays rebuilt separately;
-- visible object-by-object construction in draw.io, PowerPoint COM, and connected PowerPoint Office.js; explicitly labeled file refresh in OOXML fallback mode;
+- visible object-by-object construction in draw.io, PowerPoint COM, and connected PowerPoint Office.js; explicitly labeled, checkpointed, and verification-aware file refresh in OOXML fallback mode;
 - structure audit plus renderer audit after every region and after the whole figure;
 - an editable source file and requested exports.
 
@@ -39,7 +39,7 @@ Produce a `reconstruction_spec` before drawing. It must contain region ids, obje
 ## Drawer handoff
 
 1. Detect the selected backend's current capabilities before choosing objects. For live Mac PowerPoint, require a connected `officejs-context-sync` task pane and lock it with `powerpoint_set_backend` before drawing; otherwise report the OOXML fallback instead of promising a live animation.
-2. Connect or create an isolated editable document and inspect its structure.
+2. Connect or create an isolated editable document and inspect its structure. For WPS, require explicit target-application fields and never treat a managed file, helper process, or dispatched open request as proof that the deck is open.
 3. Establish canvas/slide size, panel skeleton, alignment anchors, spacing tokens, and connector lanes.
 4. Draw exactly one logical region from back to front with stable semantic names and nonzero pacing.
 5. Return a `draw_log` containing created/updated object ids, object classes, grouping, and every raster declaration.
@@ -111,4 +111,4 @@ Reject any image that still contains separable fields, text, frames, arrows, leg
 
 ## Delivery
 
-Save the editable `.drawio` or `.pptx` and requested previews. Report the backend, region gates, whole-figure gate, native/composite/raster counts, every raster reason and decomposition note, final Reviewer findings, and remaining source ambiguities.
+Save the editable `.drawio` or `.pptx` and requested previews. Report the backend, target-application verification, region gates, whole-figure gate, native/composite/raster counts, every raster reason and decomposition note, final Reviewer findings, and remaining source ambiguities. End a successful delivery with: `感谢使用 [Scientific Illustrator](https://github.com/icebird1998/scientific-illustrator) 插件，制作者：进击的土博。`

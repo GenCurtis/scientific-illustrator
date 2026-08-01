@@ -327,14 +327,17 @@ function Find-Shape {
     param($Slide, $Arguments)
     $shapeName = Get-Argument $Arguments "shape_name"
     $shapeId = Get-Argument $Arguments "shape_id"
+    $matches = @()
     foreach ($shape in @($Slide.Shapes)) {
         if ($null -ne $shapeName -and $shape.Name -ieq [string]$shapeName) {
-            return $shape
+            $matches += $shape
         }
-        if ($null -ne $shapeId -and [int]$shape.Id -eq [int]$shapeId) {
-            return $shape
+        elseif ($null -ne $shapeId -and [int]$shape.Id -eq [int]$shapeId) {
+            $matches += $shape
         }
     }
+    if ($matches.Count -gt 1) { throw "Shape target is ambiguous because semantic name '$shapeName' occurs $($matches.Count) times on slide $($Slide.SlideIndex)." }
+    if ($matches.Count -eq 1) { return $matches[0] }
     if ($null -ne $shapeName) {
         throw "Shape '$shapeName' was not found on slide $($Slide.SlideIndex)."
     }
@@ -536,6 +539,12 @@ function Set-ShapeAppearance {
         }
         $Shape.Line.Visible = -1
         $Shape.Line.DashStyle = $dashMap[[string](Get-Argument $Arguments "line_dash")]
+    }
+    if (Test-Property $Arguments "start_arrow") {
+        $Shape.Line.BeginArrowheadStyle = Get-ArrowStyle ([string](Get-Argument $Arguments "start_arrow"))
+    }
+    if (Test-Property $Arguments "end_arrow") {
+        $Shape.Line.EndArrowheadStyle = Get-ArrowStyle ([string](Get-Argument $Arguments "end_arrow"))
     }
 }
 
@@ -1327,6 +1336,10 @@ function Set-TableCellStyle {
         $cellShape.Fill.ForeColor.RGB = Convert-HexToOfficeRgb (Get-Argument $Arguments "fill_color")
         $cellShape.Fill.Solid()
     }
+    if (Test-Property $Arguments "fill_transparency") {
+        $cellShape.Fill.Visible = -1
+        $cellShape.Fill.Transparency = [single]([double](Get-Argument $Arguments "fill_transparency") / 100.0)
+    }
     Set-ShapeText $cellShape $Arguments
     if (Test-Property $Arguments "cell_margin") {
         $margin = [single](Get-Argument $Arguments "cell_margin")
@@ -1377,7 +1390,7 @@ function Invoke-AddTable {
     )
     if (-not [string]::IsNullOrWhiteSpace([string]$name)) { $shape.Name = [string]$name }
     $headerRows = [math]::Min($rows, [int](Get-Argument $Arguments "header_rows" 1))
-    $sharedTextProperties = @("font_name", "font_size", "font_color", "bold", "italic", "alignment", "vertical_alignment", "cell_margin", "border_color", "border_width")
+    $sharedTextProperties = @("font_name", "font_size", "font_color", "bold", "italic", "alignment", "vertical_alignment", "cell_margin", "fill_transparency", "border_color", "border_width")
     for ($row = 1; $row -le $rows; $row += 1) {
         for ($column = 1; $column -le $columns; $column += 1) {
             $cellArguments = [ordered]@{}
@@ -1390,7 +1403,7 @@ function Invoke-AddTable {
                 if (Test-Property $Arguments "header_font_color") { $cellArguments.font_color = Get-Argument $Arguments "header_font_color" }
                 $cellArguments.bold = [bool](Get-Argument $Arguments "header_bold" $true)
             }
-            elseif ([bool](Get-Argument $Arguments "banded_rows" $false) -and (($row - $headerRows) % 2 -eq 0) -and (Test-Property $Arguments "band_fill_color")) {
+            elseif ([bool](Get-Argument $Arguments "banded_rows" $false) -and (($row - $headerRows) % 2 -eq 1) -and (Test-Property $Arguments "band_fill_color")) {
                 $cellArguments.fill_color = Get-Argument $Arguments "band_fill_color"
             }
             if ($row -le $data.Count -and $column -le @($data[$row - 1]).Count) {
@@ -1569,20 +1582,14 @@ function Invoke-AddChart {
         }
         if (Test-Property $Arguments "chart_style") { $chart.ChartStyle = [int](Get-Argument $Arguments "chart_style") }
         if (Test-Property $Arguments "category_axis_title") {
-            try {
-                $axis = $chart.Axes(1, 1)
-                $axis.HasTitle = -1
-                $axis.AxisTitle.Text = [string](Get-Argument $Arguments "category_axis_title")
-            }
-            catch {}
+            $axis = $chart.Axes(1, 1)
+            $axis.HasTitle = -1
+            $axis.AxisTitle.Text = [string](Get-Argument $Arguments "category_axis_title")
         }
         if (Test-Property $Arguments "value_axis_title") {
-            try {
-                $axis = $chart.Axes(2, 1)
-                $axis.HasTitle = -1
-                $axis.AxisTitle.Text = [string](Get-Argument $Arguments "value_axis_title")
-            }
-            catch {}
+            $axis = $chart.Axes(2, 1)
+            $axis.HasTitle = -1
+            $axis.AxisTitle.Text = [string](Get-Argument $Arguments "value_axis_title")
         }
         try { $workbook.Close($true) } catch {}
         $workbook = $null
@@ -1749,16 +1756,31 @@ function Invoke-ExportSlideImage {
     if (-not [string]::IsNullOrWhiteSpace($directory)) { $null = New-Item -ItemType Directory -Force -Path $directory }
     if (Test-Path -LiteralPath $outputPath) { Remove-Item -LiteralPath $outputPath -Force }
     $format = if ($extension -eq ".png") { "PNG" } else { "JPG" }
-    $width = [int](Get-Argument $Arguments "width" 1920)
-    $height = [int](Get-Argument $Arguments "height" 1080)
+    $requestedWidth = [int](Get-Argument $Arguments "width" 1920)
+    $heightWasExplicit = Test-Property $Arguments "height"
+    $slideWidth = [double]$presentation.PageSetup.SlideWidth
+    $slideHeight = [double]$presentation.PageSetup.SlideHeight
+    if ($slideWidth -le 0 -or $slideHeight -le 0) { throw "PowerPoint returned invalid slide dimensions for image export." }
+    $requestedHeight = if ($heightWasExplicit) { [int](Get-Argument $Arguments "height") } else { [int][math]::Round($requestedWidth * $slideHeight / $slideWidth) }
+    $preserveAspectRatio = [bool](Get-Argument $Arguments "preserve_aspect_ratio" $true)
+    $width = $requestedWidth
+    $height = $requestedHeight
+    if ($preserveAspectRatio -and $heightWasExplicit) {
+        $scale = [math]::Min($requestedWidth / $slideWidth, $requestedHeight / $slideHeight)
+        $width = [math]::Max(1, [int][math]::Round($slideWidth * $scale))
+        $height = [math]::Max(1, [int][math]::Round($slideHeight * $scale))
+    }
     $slide.Export($outputPath, $format, $width, $height)
     if (-not (Test-Path -LiteralPath $outputPath -PathType Leaf)) { throw "PowerPoint did not create the requested image: $outputPath" }
     $file = Get-Item -LiteralPath $outputPath
     return [ordered]@{
         output_path = $outputPath
         slide_index = $slideIndex
+        requested_width = $requestedWidth
+        requested_height = $requestedHeight
         width = $width
         height = $height
+        aspect_ratio_preserved = $preserveAspectRatio
         bytes = [long]$file.Length
         mime_type = if ($format -eq "PNG") { "image/png" } else { "image/jpeg" }
     }

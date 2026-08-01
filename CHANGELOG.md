@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.5.3 — 2026-08-01
+
+- Fixed macOS WPS discovery for the localized application path, environment overrides, Bundle ID lookup, and exact main-process matching.
+- Replaced false-positive status with separate installed, running, managed-file, open-dispatch, document-open, and refresh-verification states. Unknown WPS states remain `null` instead of becoming success.
+- Locked both backend and target application after the first presentation mutation, so an explicit WPS request can never reuse a PowerPoint COM/Office.js session; sequence-level host selection is propagated to every operation.
+- Isolated the OOXML working-copy state per MCP process by default, preventing concurrent Codex tasks from overwriting or redirecting one another's PowerPoint/WPS session.
+- Serialized stateful MCP requests within each server, preventing parallel tool calls from racing on PPTX state or draw.io canvas mutations and losing objects.
+- Refused editable OOXML copies of `.pptm` and `.ppsx` instead of risking macro loss or content-type changes; those formats remain available to Windows COM or read-only OOXML inspection.
+- Enforced output extensions for PPTX, PDF, PNG, and JPEG across file-backed and Office.js saves/exports instead of writing valid bytes under misleading filenames.
+- Added checked `open -b com.kingsoft.wpsoffice.mac` dispatch, macOS `lsof` verification, safe activation/quit behavior, and an explicit `powerpoint_refresh` tool.
+- Made Mac PowerPoint file-backed refresh/close target the exact application-reported directory plus filename instead of a potentially ambiguous duplicate name; replaced unreliable `lsof`-only window detection and unstable AppleScript object references with bounded indexed checks.
+- Blocked automatic Mac PowerPoint reload when the managed window contains unsaved user edits, preventing checkpoint refresh from discarding manual changes.
+- Changed OOXML sequences to checkpoint refresh by default while still saving each native object; `fast` refreshes once and explicit `per_object` remains available.
+- Added Windows WPS environment/PATH/registry/versioned-path discovery, exact `wpp.exe`/`wpsoffice.exe` process parsing, `py -3` runtime support, and PowerShell syntax plus non-mutating COM status checks.
+- Extended Windows WPS discovery to configured product roots and both 32-bit/64-bit App Paths registry views.
+- Added Windows/macOS draw.io path regression tests and a GitHub Actions matrix for Ubuntu, macOS, and Windows. Public runners do not contain commercial PowerPoint/WPS applications, so simulated checks are never reported as real application integration.
+- Rejected unknown or unloaded draw.io shape/stencil names instead of allowing the renderer to silently substitute a rectangle; capabilities now expose the live stencil registry.
+- Separated free-line and attached-connector routing: coordinate lines now follow exact endpoints/waypoints without automatic orthogonal doglegs, while attached connectors keep square-corner orthogonal routing unless curvature is explicit.
+- Fixed group-shape updates, table-layout length validation, and previously ignored arrowhead updates; file-backed status no longer equates a running process with an in-memory application connection.
+- Tightened editable table/chart behavior across OOXML, Office.js, and COM: unsupported mutations now fail explicitly, transparency and banding are preserved, scatter x-values remain numeric, and editable axis titles are emitted where supported.
+- Rejected oversized table data and out-of-range cell overrides instead of truncating them, and made banded-row parity consistent for any header-row count.
+- Made Office.js, OOXML, and COM shape lookup reject ambiguous duplicate names and added duplicate-name hard findings so correction calls cannot silently edit the wrong object.
+- Added WPS reliability tests, real Mac PowerPoint/WPS/draw.io integration checks, concise usage guidance, and synchronized plugin, MCP, and Office.js version metadata.
+
 ## 1.5.2 — 2026-08-01
 
 - Replaced unsupported SVG manifest icons with validated 32 px and 64 px PNG assets so Mac PowerPoint no longer silently ignores the Office.js add-in.

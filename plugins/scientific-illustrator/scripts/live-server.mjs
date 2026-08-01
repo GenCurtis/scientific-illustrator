@@ -9,11 +9,34 @@ import net from "node:net";
 import { drawioInstallHint, resolveDrawioExecutable } from "./drawio-path.mjs";
 
 const SERVER_NAME = "drawio-live";
-const SERVER_VERSION = "1.5.2";
+const SERVER_VERSION = "1.5.3";
 const DRAWIO = resolveDrawioExecutable();
 const DEFAULT_PORT = Number(process.env.DRAWIO_LIVE_PORT || 9333);
 const PROFILE_ROOT = process.env.DRAWIO_LIVE_PROFILE || path.join(os.homedir(), ".drawio-live-mcp");
 const SUPPORTED_PROTOCOLS = new Set(["2024-11-05", "2025-03-26", "2025-06-18"]);
+const BASELINE_SHAPES = [
+  "rectangle", "rounded", "ellipse", "diamond", "cylinder", "hexagon", "triangle", "parallelogram",
+  "trapezoid", "pentagon", "star", "document", "note", "cloud", "text", "swimlane",
+];
+const BASELINE_SHAPE_SET = new Set(BASELINE_SHAPES);
+const BASELINE_SHAPE_STYLES = {
+  rectangle: "rounded=0;",
+  rounded: "rounded=1;",
+  ellipse: "ellipse;",
+  diamond: "rhombus;",
+  cylinder: "shape=cylinder3;boundedLbl=1;backgroundOutline=1;",
+  hexagon: "shape=hexagon;perimeter=hexagonPerimeter2;fixedSize=1;",
+  triangle: "triangle;",
+  parallelogram: "shape=parallelogram;perimeter=parallelogramPerimeter;",
+  trapezoid: "shape=trapezoid;perimeter=trapezoidPerimeter;",
+  pentagon: "shape=mxgraph.basic.pentagon;",
+  star: "shape=mxgraph.basic.star;",
+  document: "shape=document;boundedLbl=1;",
+  note: "shape=note;size=15;",
+  cloud: "ellipse;shape=cloud;",
+  text: "text;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;html=1;fontColor=#1f2937;",
+  swimlane: "swimlane;startSize=30;rounded=0;html=1;whiteSpace=wrap;fillColor=#f5f5f5;strokeColor=#666666;",
+};
 
 const live = {
   process: null,
@@ -35,7 +58,7 @@ const shapeProperties = {
   label: { type: "string", default: "" },
   shape: {
     type: "string",
-    description: "Friendly built-in name or a registered draw.io shape name returned by drawio_live_get_capabilities. A full style may also be supplied.",
+    description: "Friendly built-in name or an exact registered draw.io shape/stencil name returned by drawio_live_get_capabilities. Unknown names are rejected instead of silently rendering as rectangles. A full style string may also be supplied.",
     default: "rounded",
   },
   x: { type: "number" },
@@ -102,7 +125,7 @@ const tools = [
   },
   {
     name: "drawio_live_add_shape",
-    description: "Add one editable shape directly to the currently visible draw.io canvas. The shape appears immediately; no XML file is opened.",
+    description: "Add one editable, verified shape directly to the currently visible draw.io canvas. Unknown shape names are rejected so draw.io cannot silently substitute a rectangle. The shape appears immediately; no XML file is opened.",
     inputSchema: {
       type: "object",
       required: ["id", "x", "y", "width", "height"],
@@ -141,7 +164,7 @@ const tools = [
   },
   {
     name: "drawio_live_add_line",
-    description: "Add an editable unattached draw.io line or arrow between explicit canvas coordinates for axes, ticks, separators, and annotations.",
+    description: "Add an editable unattached draw.io straight line or explicit polyline for arrows, axes, ticks, separators, and annotations. The default disables automatic orthogonal rerouting and rounded bends so the rendered path follows the supplied endpoints/waypoints.",
     inputSchema: {
       type: "object",
       required: ["id", "begin_x", "begin_y", "end_x", "end_y"],
@@ -546,30 +569,15 @@ function setStyle(style, key, value) {
 
 function shapeStyle(shape = "rounded") {
   const common = "whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#1f2937;";
-  const map = {
-    rectangle: `rounded=0;${common}`,
-    rounded: `rounded=1;${common}`,
-    ellipse: `ellipse;${common}`,
-    diamond: `rhombus;${common}`,
-    cylinder: `shape=cylinder3;boundedLbl=1;backgroundOutline=1;${common}`,
-    hexagon: `shape=hexagon;perimeter=hexagonPerimeter2;fixedSize=1;${common}`,
-    triangle: `triangle;${common}`,
-    parallelogram: `shape=parallelogram;perimeter=parallelogramPerimeter;${common}`,
-    trapezoid: `shape=trapezoid;perimeter=trapezoidPerimeter;${common}`,
-    pentagon: `shape=mxgraph.basic.pentagon;${common}`,
-    star: `shape=mxgraph.basic.star;${common}`,
-    document: `shape=document;boundedLbl=1;${common}`,
-    note: `shape=note;size=15;${common}`,
-    cloud: `ellipse;shape=cloud;${common}`,
-    text: "text;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;html=1;fontColor=#1f2937;",
-    swimlane: "swimlane;startSize=30;rounded=0;html=1;whiteSpace=wrap;fillColor=#f5f5f5;strokeColor=#666666;",
-  };
-  if (map[shape]) return map[shape];
+  if (BASELINE_SHAPE_STYLES[shape]) {
+    const baseline = BASELINE_SHAPE_STYLES[shape];
+    return shape === "text" || shape === "swimlane" ? baseline : `${baseline}${common}`;
+  }
   return `shape=${shape};${common}`;
 }
 
-function edgeStyle(args) {
-  let style = args.style || "edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;";
+function edgeStyle(args, defaultStyle = "edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;") {
+  let style = args.style || defaultStyle;
   style = setStyle(style, "strokeColor", args.color);
   style = setStyle(style, "strokeWidth", args.width);
   if (args.dashed !== undefined) style = setStyle(style, "dashed", args.dashed ? 1 : 0);
@@ -787,21 +795,18 @@ async function captureScreenshot() {
 
 async function getCapabilities(args = {}) {
   const connected = live.cdp?.ws?.readyState === WebSocket.OPEN;
-  let registry = { shapes: [], markers: [], edge_styles: [], perimeters: [] };
+  let registry = { shapes: [], stencils: [], markers: [], edge_styles: [], perimeters: [] };
   if (connected) {
     try {
       registry = await evaluate(`(() => ({
         shapes: typeof mxCellRenderer !== 'undefined' ? Object.keys(mxCellRenderer.defaultShapes || {}).sort() : [],
+        stencils: typeof mxStencilRegistry !== 'undefined' ? Object.keys(mxStencilRegistry.stencils || {}).sort() : [],
         markers: typeof mxMarker !== 'undefined' ? Object.keys(mxMarker.markers || {}).sort() : [],
         edge_styles: typeof mxStyleRegistry !== 'undefined' ? Object.keys(mxStyleRegistry.values || {}).filter((key) => /edge/i.test(key)).sort() : [],
         perimeters: typeof mxStyleRegistry !== 'undefined' ? Object.keys(mxStyleRegistry.values || {}).filter((key) => /perimeter/i.test(key)).sort() : [],
       }))()`);
     } catch {}
   }
-  const baselineShapes = [
-    "rectangle", "rounded", "ellipse", "diamond", "cylinder", "hexagon", "triangle", "parallelogram",
-    "trapezoid", "pentagon", "star", "document", "note", "cloud", "text", "swimlane",
-  ];
   const nativeObjectFamilies = [
     { family: "text_box", implementation: "editable text vertex", mcp_tool: "drawio_live_add_shape", mcp_available: true, preferred_for: ["titles", "labels", "captions", "paragraphs"] },
     { family: "auto_shape", implementation: "editable mxGraph vertex", mcp_tool: "drawio_live_add_shape", mcp_available: true, preferred_for: ["boxes", "symbols", "flowchart nodes", "panel containers"] },
@@ -827,8 +832,9 @@ async function getCapabilities(args = {}) {
     },
     host: { platform: process.platform, executable: DRAWIO.executable, executable_source: DRAWIO.source, connected, graph_ready: connected ? Boolean((await liveStatus()).graph_ready) : false },
     native_object_families: nativeObjectFamilies,
-    baseline_shapes: baselineShapes.map((plugin_name) => ({ plugin_name, mcp_available: true })),
+    baseline_shapes: BASELINE_SHAPES.map((plugin_name) => ({ plugin_name, mcp_available: true })),
     ...(args.include_registered_shapes === false ? {} : { registered_shapes: registry.shapes }),
+    ...(args.include_registered_shapes === false ? {} : { registered_stencils: registry.stencils }),
     ...(args.include_registered_markers === false ? {} : { registered_markers: registry.markers }),
     ...(args.include_registered_edge_styles === false ? {} : { registered_edge_styles: registry.edge_styles, registered_perimeters: registry.perimeters }),
     mcp_coverage: {
@@ -996,7 +1002,10 @@ function trimPolylineEndpoints(args) {
 
 async function addLine(args) {
   const trimmed = trimPolylineEndpoints(args);
-  const style = edgeStyle({ ...args, start_arrow: args.start_arrow || "none", end_arrow: args.end_arrow || "none" });
+  const style = edgeStyle(
+    { ...args, start_arrow: args.start_arrow || "none", end_arrow: args.end_arrow || "none" },
+    "edgeStyle=none;rounded=0;html=1;endArrow=none;startArrow=none;",
+  );
   const payload = JSON.stringify({
     ...args,
     requested_begin_x: Number(args.begin_x),
@@ -1060,13 +1069,57 @@ async function addLine(args) {
 }
 
 async function addShape(args) {
-  let style = args.style || shapeStyle(args.shape);
+  const requestedShape = String(args.shape || "rounded").trim();
+  if (!requestedShape) throw new Error("shape must not be empty.");
+  const explicitStyleOverride = typeof args.style === "string" && args.style.trim().length > 0;
+  const shapeContainsFullStyle = !explicitStyleOverride && /[;=]/.test(requestedShape);
+  if (!explicitStyleOverride && !shapeContainsFullStyle && !BASELINE_SHAPE_SET.has(requestedShape)) {
+    const registration = await graphEval(`
+      const requestedShape = ${JSON.stringify(requestedShape)};
+      const rendererRegistered = typeof mxCellRenderer !== 'undefined' && Object.prototype.hasOwnProperty.call(mxCellRenderer.defaultShapes || {}, requestedShape);
+      const stencilRegistered = typeof mxStencilRegistry !== 'undefined' && (
+        Object.prototype.hasOwnProperty.call(mxStencilRegistry.stencils || {}, requestedShape) ||
+        (typeof mxStencilRegistry.getStencil === 'function' && !!mxStencilRegistry.getStencil(requestedShape))
+      );
+      return { renderer_registered: rendererRegistered, stencil_registered: stencilRegistered };
+    `);
+    if (!registration.renderer_registered && !registration.stencil_registered) {
+      throw new Error(`Unknown or unloaded draw.io shape "${requestedShape}". Scientific Illustrator refused draw.io's silent rectangle fallback. Use a baseline or registered name from drawio_live_get_capabilities, reconstruct the object from editable primitives, supply an intentional full style, or insert only the smallest irreducible raster region with drawio_live_add_image.`);
+    }
+  }
+  let style = explicitStyleOverride ? args.style : shapeContainsFullStyle ? requestedShape : shapeStyle(requestedShape);
   style = setStyle(style, "fillColor", args.fill_color);
   style = setStyle(style, "strokeColor", args.stroke_color);
   style = setStyle(style, "fontColor", args.font_color);
   style = setStyle(style, "fontSize", args.font_size);
   style = setStyle(style, "strokeWidth", args.stroke_width);
-  const payload = JSON.stringify({ ...args, style: ensureStyle(style) });
+  style = ensureStyle(style);
+  const renderability = await graphEval(`
+    const requestedStyle = ${JSON.stringify(style)};
+    const probe = new mxCell('', new mxGeometry(0, 0, 1, 1), requestedStyle);
+    probe.setVertex(true);
+    const resolvedStyle = graph.getCellStyle(probe) || {};
+    const resolvedShape = String(resolvedStyle[mxConstants.STYLE_SHAPE] || 'rectangle');
+    const rendererRegistered = typeof mxCellRenderer !== 'undefined' && Object.prototype.hasOwnProperty.call(mxCellRenderer.defaultShapes || {}, resolvedShape);
+    const stencilRegistered = typeof mxStencilRegistry !== 'undefined' && (
+      Object.prototype.hasOwnProperty.call(mxStencilRegistry.stencils || {}, resolvedShape) ||
+      (typeof mxStencilRegistry.getStencil === 'function' && !!mxStencilRegistry.getStencil(resolvedShape))
+    );
+    const namedStyles = graph.getStylesheet?.()?.styles || {};
+    const unknownBareTokens = requestedStyle.split(';').map((token) => token.trim()).filter((token) => token && !token.includes('=') &&
+      !Object.prototype.hasOwnProperty.call(namedStyles, token) &&
+      !(typeof mxCellRenderer !== 'undefined' && Object.prototype.hasOwnProperty.call(mxCellRenderer.defaultShapes || {}, token)) &&
+      !(typeof mxStencilRegistry !== 'undefined' && typeof mxStencilRegistry.getStencil === 'function' && !!mxStencilRegistry.getStencil(token))
+    );
+    return { resolved_shape: resolvedShape, renderer_registered: rendererRegistered, stencil_registered: stencilRegistered, unknown_bare_tokens: unknownBareTokens };
+  `);
+  if ((!renderability.renderer_registered && !renderability.stencil_registered) || renderability.unknown_bare_tokens.length) {
+    const detail = renderability.unknown_bare_tokens.length
+      ? `unknown style token(s): ${renderability.unknown_bare_tokens.join(", ")}`
+      : `unregistered resolved renderer: ${renderability.resolved_shape}`;
+    throw new Error(`The draw.io style for "${requestedShape}" is not renderable (${detail}). Scientific Illustrator refused the renderer's silent rectangle fallback. Use a baseline or registered capability, reconstruct the object from editable primitives, or insert only the smallest irreducible raster region.`);
+  }
+  const payload = JSON.stringify({ ...args, requested_shape: requestedShape, resolved_shape: renderability.resolved_shape, shape_validation: explicitStyleOverride || shapeContainsFullStyle ? "verified-explicit-style" : "registered-or-baseline", style });
   const value = await graphEval(`
     const a = ${payload};
     if (graph.getModel().getCell(a.id)) throw new Error('Cell id already exists: ' + a.id);
@@ -1077,7 +1130,7 @@ async function addShape(args) {
     finally { graph.getModel().endUpdate(); }
     graph.setSelectionCell(cell);
     graph.scrollCellToVisible(cell);
-    return { id: cell.id, label: graph.convertValueToString(cell), geometry: cell.geometry, style: cell.style };
+    return { id: cell.id, label: graph.convertValueToString(cell), geometry: cell.geometry, style: cell.style, requested_shape: a.requested_shape, resolved_shape: a.resolved_shape, shape_validation: a.shape_validation };
   `);
   await sleep(args.pause_after_ms ?? live.stepDelayMs);
   return value;
@@ -2148,8 +2201,7 @@ async function handleMessage(message) {
   return rpcError(id, -32601, `Method not found: ${method}`);
 }
 
-const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
-rl.on("line", async (line) => {
+async function processInputLine(line) {
   if (!line.trim()) return;
   let message;
   try { message = JSON.parse(line); }
@@ -2163,6 +2215,14 @@ rl.on("line", async (line) => {
   } catch (error) {
     process.stdout.write(`${JSON.stringify(rpcError(message.id, -32603, "Internal error", error.message))}\n`);
   }
+}
+
+const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
+let requestQueue = Promise.resolve();
+rl.on("line", (line) => {
+  requestQueue = requestQueue.then(() => processInputLine(line)).catch((error) => {
+    process.stderr.write(`[${SERVER_NAME}] request queue error: ${error.stack || error.message}\n`);
+  });
 });
 
 process.on("uncaughtException", (error) => process.stderr.write(`[${SERVER_NAME}] ${error.stack || error.message}\n`));
