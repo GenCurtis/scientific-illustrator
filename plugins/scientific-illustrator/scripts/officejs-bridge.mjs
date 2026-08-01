@@ -17,12 +17,14 @@ const DEFAULT_COMMAND_TIMEOUT_MS = 45_000;
 const DEFAULT_CLIENT_TTL_MS = 35_000;
 const DEFAULT_LONG_POLL_MS = 20_000;
 const MAX_BODY_BYTES = 64 * 1024 * 1024;
+const SERVER_VERSION = "1.5.2";
 
 const CONTENT_TYPES = {
   ".css": "text/css; charset=utf-8",
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".png": "image/png",
   ".svg": "image/svg+xml",
 };
 
@@ -307,7 +309,7 @@ export class OfficeJsCommandBridge {
     }
     const url = new URL(request.url || "/", this.origin);
     if (request.method === "GET" && url.pathname === "/health") {
-      jsonResponse(response, 200, { ok: true, version: "1.5.1", backend: "officejs-context-sync" });
+      jsonResponse(response, 200, { ok: true, version: SERVER_VERSION, backend: "officejs-context-sync" });
       return;
     }
     if (!url.pathname.startsWith("/api/")) {
