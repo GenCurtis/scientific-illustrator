@@ -5,8 +5,8 @@
   xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
   xsi:type="TaskPaneApp">
   <Id>17f06c41-8f7f-4a92-9dcf-571965576160</Id>
-  <Version>1.5.3.0</Version>
-  <ProviderName>科研up主:进击的土博</ProviderName>
+  <Version>1.5.4.0</Version>
+  <ProviderName>一个地质博士</ProviderName>
   <DefaultLocale>zh-CN</DefaultLocale>
   <DisplayName DefaultValue="Scientific Illustrator Live" />
   <Description DefaultValue="Use Office.js context.sync() to draw editable scientific figures object by object in the current PowerPoint deck." />

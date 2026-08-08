@@ -1,9 +1,9 @@
 {
   "name": "scientific-illustrator",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "description": "Design or recreate scientific figures in draw.io, Microsoft PowerPoint, or WPS Presentation with editable objects, background-safe drawing, live Office.js support, and one Designer-Drawer-Reviewer-Corrector workflow.",
   "author": {
-    "name": "科研up主:进击的土博",
+    "name": "一个地质博士",
     "url": "https://github.com/icebird1998"
   },
   "homepage": "https://github.com/icebird1998/scientific-illustrator#readme",
@@ -23,7 +23,7 @@
     "displayName": "Scientific Illustrator",
     "shortDescription": "Build editable figures in draw.io, PowerPoint, or WPS.",
     "longDescription": "Uses one backend-neutral four-role workflow with equivalent draw.io and presentation mappings. Windows PowerPoint uses COM. Mac PowerPoint uses an Office.js task pane and context.sync when connected, with native OOXML as a safe fallback. WPS uses an editable OOXML working copy with truthful open-state reporting and checkpointed application refresh. Presentation drawing preserves the user's foreground application by default. The Designer specifies layout and routing, the Drawer builds editable objects panel by panel, the Reviewer checks renderer fidelity and editability, and the Corrector returns object-level repairs.",
-    "developerName": "科研up主:进击的土博",
+    "developerName": "一个地质博士",
     "category": "Productivity",
     "capabilities": [
       "Interactive",

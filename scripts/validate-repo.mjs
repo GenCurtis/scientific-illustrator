@@ -28,7 +28,7 @@ const mcp = JSON.parse(await fs.readFile(mcpPath, "utf8"));
 if (entry.name !== manifest.name || manifest.name !== "scientific-illustrator") {
   throw new Error("Marketplace and manifest plugin names differ.");
 }
-if (manifest.version !== "1.5.3") throw new Error("Unexpected public release version.");
+if (manifest.version !== "1.5.4") throw new Error("Unexpected public release version.");
 if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(manifest.version)) {
   throw new Error("Manifest version is not valid semantic versioning.");
 }
@@ -36,8 +36,23 @@ if (rootPackage.version !== manifest.version) throw new Error("Package and plugi
 if (manifest.repository !== "https://github.com/icebird1998/scientific-illustrator") {
   throw new Error("Manifest repository URL is incorrect.");
 }
-if (manifest.author?.name !== "科研up主:进击的土博" || manifest.interface?.developerName !== "科研up主:进击的土博") {
+if (manifest.author?.name !== "一个地质博士" || manifest.interface?.developerName !== "一个地质博士") {
   throw new Error("Developer attribution is missing.");
+}
+for (const relativePath of [
+  "README.md",
+  "LICENSE",
+  "CHANGELOG.md",
+  "plugins/scientific-illustrator/.codex-plugin/plugin.json",
+  "plugins/scientific-illustrator/officejs/manifest.xml",
+  "plugins/scientific-illustrator/officejs/taskpane.html",
+  "plugins/scientific-illustrator/skills/edit-powerpoint-live/SKILL.md",
+  "plugins/scientific-illustrator/skills/recreate-scientific-figure/SKILL.md",
+]) {
+  const source = await fs.readFile(path.join(root, relativePath), "utf8");
+  if (/\u8fdb\u51fb\u7684\u571f\u535a|\u79d1\u7814\s*up\s*\u4e3b/i.test(source)) {
+    throw new Error(`Legacy author attribution remains in ${relativePath}.`);
+  }
 }
 if (!Array.isArray(manifest.interface?.defaultPrompt) || manifest.interface.defaultPrompt.length > 3) {
   throw new Error("Default prompts are invalid.");

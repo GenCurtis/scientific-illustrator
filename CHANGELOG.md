@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.4 — 2026-08-08
+
+- Updated the author, developer, Office add-in provider, task-pane, license, README, and successful-delivery attribution to `一个地质博士`.
+- Removed every remaining legacy author label from the plugin package.
+- Synchronized the plugin, MCP server, Office.js manifest, documentation, and validation metadata at version 1.5.4.
+
 ## 1.5.3 — 2026-08-01
 
 - Fixed macOS WPS discovery for the localized application path, environment overrides, Bundle ID lookup, and exact main-process matching.
