@@ -2,11 +2,11 @@
 
 把参考图上传给 Codex，插件会在 **Microsoft PowerPoint、WPS 演示或 draw.io** 中尽量用可编辑对象重新绘制，并自动检查和修正。
 
-**作者：科研 up 主「进击的土博」**
+**作者：一个地质博士**
 
 GitHub：[@icebird1998](https://github.com/icebird1998)
 
-当前版本：[v1.5.3](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.5.3)
+当前版本：[v1.5.4](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.5.4)
 
 本项目是 [drawio-scientific-illustrator](https://github.com/icebird1998/drawio-scientific-illustrator) 的升级整合版，后续功能只在本项目更新。
 
@@ -155,6 +155,7 @@ node plugins/scientific-illustrator/scripts/officejs-setup.mjs sideload
 
 | 版本 | 主要变化 |
 |---|---|
+| [v1.5.4](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.5.4) | 将作者署名统一更新为“一个地质博士” |
 | [v1.5.3](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.5.3) | 修复双平台三软件兼容、连接状态和表格/图表/箭头更新；增加三平台 CI、真实打开验证及 draw.io 防伪形状检查 |
 | [v1.5.2](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.5.2) | 修复 Mac PowerPoint 实时加载项的图标格式，避免加载项被静默忽略 |
 | [v1.5.1](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.5.1) | 修复 PowerPoint/WPS 反复抢占窗口；默认可在后台绘制 |
@@ -174,4 +175,4 @@ git checkout v1.5.0
 
 [MIT License](LICENSE) · [隐私说明](PRIVACY.md)
 
-感谢使用 **Scientific Illustrator**。制作者：**进击的土博**。
+感谢使用 **Scientific Illustrator**。制作者：**一个地质博士**。
