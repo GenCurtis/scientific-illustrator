@@ -63,7 +63,15 @@ async function testServer(server) {
     if (missing.length) throw new Error(`${server.file} is missing tools: ${missing.join(", ")}`);
     if (server.call) {
       if (responses.get(3)?.error || responses.get(3)?.result?.isError) throw new Error(`${server.file} probe call failed: ${JSON.stringify(responses.get(3))}`);
-      if (responses.get(3)?.result?.structuredContent?.backend !== "officejs-context-sync") throw new Error(`${server.file} returned an unexpected Office.js bridge status.`);
+      const status = responses.get(3)?.result?.structuredContent;
+      if (!status || typeof status !== "object") throw new Error(`${server.file} probe returned no structured status.`);
+      if (typeof status.connected !== "boolean") throw new Error(`${server.file} probe did not report a connected flag.`);
+      if (status.connected === false && typeof status.last_error !== "string") {
+        throw new Error(`${server.file} probe reported disconnected without a last_error explanation.`);
+      }
+      if (status.connected === true && status.server_running !== true) {
+        throw new Error(`${server.file} probe reported a connected client while the bridge is not running.`);
+      }
     }
     console.log(`${server.file}: ${tools.length} tools; required parity tools present`);
   } finally {

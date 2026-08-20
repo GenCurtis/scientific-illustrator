@@ -6,6 +6,7 @@ import https from "node:https";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { VERSION as SERVER_VERSION, assertAllowedPath } from "./guardrails.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const PLUGIN_DIR = path.resolve(SCRIPT_DIR, "..");
@@ -17,7 +18,6 @@ const DEFAULT_COMMAND_TIMEOUT_MS = 45_000;
 const DEFAULT_CLIENT_TTL_MS = 35_000;
 const DEFAULT_LONG_POLL_MS = 20_000;
 const MAX_BODY_BYTES = 64 * 1024 * 1024;
-const SERVER_VERSION = "1.5.4";
 
 const CONTENT_TYPES = {
   ".css": "text/css; charset=utf-8",
@@ -34,6 +34,7 @@ export function defaultOfficeJsPaths() {
     state_dir: stateDir,
     certificate_path: path.resolve(process.env.SCIENTIFIC_ILLUSTRATOR_OFFICEJS_CERT || path.join(stateDir, "localhost.crt")),
     private_key_path: path.resolve(process.env.SCIENTIFIC_ILLUSTRATOR_OFFICEJS_KEY || path.join(stateDir, "localhost.key")),
+    page_token_path: path.resolve(process.env.SCIENTIFIC_ILLUSTRATOR_OFFICEJS_PAGE_TOKEN || path.join(stateDir, "page-token")),
     manifest_path: path.join(OFFICEJS_DIR, "manifest.xml"),
     officejs_dir: OFFICEJS_DIR,
   };
@@ -100,6 +101,7 @@ export class OfficeJsCommandBridge {
     this.port = Number(options.port ?? process.env.SCIENTIFIC_ILLUSTRATOR_OFFICEJS_PORT ?? DEFAULT_PORT);
     this.certPath = path.resolve(options.certPath || defaults.certificate_path);
     this.keyPath = path.resolve(options.keyPath || defaults.private_key_path);
+    this.pageTokenPath = path.resolve(options.pageTokenPath || defaults.page_token_path);
     this.assetDir = path.resolve(options.assetDir || defaults.officejs_dir);
     this.commandTimeoutMs = Number(options.commandTimeoutMs || DEFAULT_COMMAND_TIMEOUT_MS);
     this.clientTtlMs = Number(options.clientTtlMs || DEFAULT_CLIENT_TTL_MS);
@@ -132,6 +134,13 @@ export class OfficeJsCommandBridge {
       return this.status();
     }
     const [cert, key] = await Promise.all([fs.readFile(this.certPath), fs.readFile(this.keyPath)]);
+    try {
+      this.pageToken = (await fs.readFile(this.pageTokenPath, "utf8")).trim();
+    } catch {
+      this.pageToken = randomBytes(32).toString("base64url");
+      await fs.mkdir(path.dirname(this.pageTokenPath), { recursive: true, mode: 0o700 });
+      await fs.writeFile(this.pageTokenPath, this.pageToken, { mode: 0o600 });
+    }
     const server = https.createServer({ cert, key }, (request, response) => {
       this.#handleRequest(request, response).catch((error) => {
         if (!response.headersSent) jsonResponse(response, error.statusCode || 500, { error: error.message });
@@ -167,7 +176,8 @@ export class OfficeJsCommandBridge {
       port: this.port,
       certificate_path: this.certPath,
       private_key_path: this.keyPath,
-      taskpane_url: `${this.origin}/taskpane.html`,
+      taskpane_url: `${this.origin}/taskpane.html`, // requires the page token (query or Bearer header)
+      page_token_path: this.pageTokenPath,
       started_at: this.startedAt,
       last_error: this.lastError,
       client: this.client ? {
@@ -288,9 +298,6 @@ export class OfficeJsCommandBridge {
       return;
     }
     let body = await fs.readFile(resolved);
-    if (path.extname(resolved) === ".html") {
-      body = Buffer.from(body.toString("utf8").replaceAll("__SCIENTIFIC_ILLUSTRATOR_TOKEN__", this.sessionToken), "utf8");
-    }
     response.writeHead(200, {
       "Cache-Control": "no-store",
       "Content-Length": body.length,
@@ -315,6 +322,12 @@ export class OfficeJsCommandBridge {
     if (!url.pathname.startsWith("/api/")) {
       if (request.method !== "GET") {
         jsonResponse(response, 405, { error: "Method not allowed." });
+        return;
+      }
+      const queryToken = String(url.searchParams.get("token") || "");
+      const headerToken = String(request.headers.authorization || "").replace(/^Bearer\s+/i, "");
+      if (!secureTokenEqual(queryToken || headerToken, this.pageToken)) {
+        jsonResponse(response, 401, { error: "A valid page token is required to load the Scientific Illustrator task pane." });
         return;
       }
       await this.#serveAsset(url.pathname, response);

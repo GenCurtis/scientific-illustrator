@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  const token = document.querySelector('meta[name="scientific-illustrator-token"]')?.getAttribute("content") || "";
+  const token = new URLSearchParams(window.location.search).get("token") || "";
   const statusDot = document.getElementById("status-dot");
   const statusTitle = document.getElementById("status-title");
   const statusDetail = document.getElementById("status-detail");

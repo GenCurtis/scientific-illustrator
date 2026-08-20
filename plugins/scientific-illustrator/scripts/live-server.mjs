@@ -7,9 +7,9 @@ import path from "node:path";
 import os from "node:os";
 import net from "node:net";
 import { drawioInstallHint, resolveDrawioExecutable } from "./drawio-path.mjs";
+import { VERSION as SERVER_VERSION, MAX_IMAGE_BYTES, assertAllowedPath, sniffImageMime, atomicWrite } from "./guardrails.mjs";
 
 const SERVER_NAME = "drawio-live";
-const SERVER_VERSION = "1.5.4";
 const DRAWIO = resolveDrawioExecutable();
 const DEFAULT_PORT = Number(process.env.DRAWIO_LIVE_PORT || 9333);
 const PROFILE_ROOT = process.env.DRAWIO_LIVE_PROFILE || path.join(os.homedir(), ".drawio-live-mcp");
@@ -443,7 +443,14 @@ const tools = [
           type: "array",
           minItems: 1,
           maxItems: 500,
-        items: { type: "object", description: "An operation with type: shape, image, line, edge, table, table_cell, table_layout, chart, duplicate, group, ungroup, z_order, align, distribute, update, fit, or wait." },
+          items: {
+            type: "object",
+            required: ["type"],
+            properties: {
+              type: { type: "string", enum: ["shape", "image", "line", "edge", "table", "table_cell", "table_layout", "chart", "duplicate", "group", "ungroup", "z_order", "align", "distribute", "update", "fit", "wait"] },
+            },
+            additionalProperties: true,
+          },
         },
         step_delay_ms: { type: "integer", minimum: 0, maximum: 10000 },
         screenshot_after: { type: "boolean", default: true },
@@ -887,7 +894,20 @@ async function addImage(args) {
   }
   if (crop.left + crop.right >= 100 || crop.top + crop.bottom >= 100) throw new Error("Opposing crop percentages must total less than 100%.");
   const mimeType = mimeTypeForImage(imagePath);
-  const source = await fs.readFile(imagePath);
+  const resolvedPath = assertAllowedPath(imagePath);
+  const imageStat = await fs.stat(resolvedPath);
+  if (imageStat.size > MAX_IMAGE_BYTES) {
+    throw new Error(
+      `Image file exceeds the ${MAX_IMAGE_BYTES} byte guardrail: ${resolvedPath} (${imageStat.size} bytes). Set SCIENTIFIC_ILLUSTRATOR_MAX_IMAGE_BYTES to raise the limit.`
+    );
+  }
+  const source = await fs.readFile(resolvedPath);
+  const sniffed = sniffImageMime(source, path.extname(resolvedPath).toLowerCase());
+  if (sniffed !== mimeType) {
+    throw new Error(
+      `Image content does not match its file extension: ${resolvedPath} (extension implies ${mimeType}, content ${sniffed || "does not look like a supported image"}). Rename a real image, or use SVG only for vector content.`
+    );
+  }
   let imageDataUrl = `data:${mimeType};base64,${source.toString("base64")}`;
   if (hasCrop) {
     const visibleWidth = 100 - crop.left - crop.right;
@@ -1981,10 +2001,11 @@ async function launchLive(args) {
     const argv = [
       `--remote-debugging-address=127.0.0.1`,
       `--remote-debugging-port=${live.port}`,
+      `--remote-allow-origins=http://127.0.0.1:${live.port},http://localhost:${live.port}`,
       `--user-data-dir=${profileDir}`,
       "--disable-features=CalculateNativeWinOcclusion",
     ];
-    if (args.file_path) argv.push(path.resolve(args.file_path));
+    if (args.file_path) argv.push(assertAllowedPath(args.file_path));
     live.process = spawn(DRAWIO.executable, argv, { detached: false, stdio: "ignore", windowsHide: false });
     await new Promise((resolve, reject) => {
       live.process.once("spawn", resolve);
@@ -2139,7 +2160,7 @@ async function handleTool(name, args = {}) {
     case "drawio_live_audit_figure":
       return { value: await auditFigure(args) };
     case "drawio_live_save_snapshot": {
-      const output = path.resolve(args.output_path);
+      const output = assertAllowedPath(args.output_path);
       if (path.extname(output).toLowerCase() !== ".drawio") throw new Error("output_path must end with .drawio");
       try {
         await fs.access(output);
@@ -2153,8 +2174,7 @@ async function handleTool(name, args = {}) {
         return mxUtils.getXml(node);
       `);
       const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<mxfile host="Electron" modified="${new Date().toISOString()}" version="30.3.6">\n  <diagram id="live-page" name="${xmlEscape(args.page_name || "Live drawing")}">\n${modelXml}\n  </diagram>\n</mxfile>\n`;
-      await fs.mkdir(path.dirname(output), { recursive: true });
-      await fs.writeFile(output, xml, "utf8");
+      await atomicWrite(output, xml, "utf8");
       return { value: { output_path: output, bytes: Buffer.byteLength(xml), saved_from_visible_session: true } };
     }
     case "drawio_live_close_session": {

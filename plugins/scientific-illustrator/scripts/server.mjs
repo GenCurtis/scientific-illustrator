@@ -7,10 +7,10 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { drawioInstallHint, resolveDrawioExecutable } from "./drawio-path.mjs";
+import { VERSION as SERVER_VERSION, assertAllowedPath, atomicWrite } from "./guardrails.mjs";
 
 const execFileAsync = promisify(execFile);
 const SERVER_NAME = "scientific-illustrator-file-utils";
-const SERVER_VERSION = "1.5.4";
 const DRAWIO = resolveDrawioExecutable();
 const MAX_XML_BYTES = 12 * 1024 * 1024;
 const SUPPORTED_PROTOCOLS = new Set(["2024-11-05", "2025-03-26", "2025-06-18"]);
@@ -406,7 +406,7 @@ function assertFileConstructionContext(args, toolName) {
 function normalizeOutputPath(filePath, extension = ".drawio") {
   if (!filePath || typeof filePath !== "string") throw new Error("A file path is required.");
   const expanded = filePath.startsWith("~/") || filePath.startsWith("~\\") ? path.join(os.homedir(), filePath.slice(2)) : filePath;
-  const resolved = path.resolve(expanded);
+  const resolved = assertAllowedPath(expanded);
   if (extension && path.extname(resolved).toLowerCase() !== extension.toLowerCase()) {
     throw new Error(`Expected a ${extension} path: ${resolved}`);
   }
@@ -815,12 +815,12 @@ async function writeValidatedXml(outputPath, xml, overwrite) {
   const report = inspectXml(xml);
   if (!report.valid) throw new Error(`Invalid draw.io XML:\n${report.errors.join("\n")}`);
   await assertWritable(target, overwrite);
-  await fs.writeFile(target, xml, "utf8");
+  await atomicWrite(target, xml, "utf8");
   return { output_path: target, bytes: Buffer.byteLength(xml, "utf8"), validation: { valid: true, warnings: report.warnings, pages: report.pages } };
 }
 
 async function createTraceDocument(args) {
-  const reference = path.resolve(args.reference_path);
+  const reference = assertAllowedPath(args.reference_path);
   const target = normalizeOutputPath(args.output_path);
   const { dataUri, data, ext } = await imageDataUri(reference);
   const original = readImageSize(data, ext);
@@ -875,7 +875,7 @@ async function exportDiagram(args) {
   const input = normalizeOutputPath(args.input_path);
   await fs.access(input);
   const format = args.format;
-  const output = path.resolve(args.output_path || defaultExportPath(input, format, Boolean(args.embed)));
+  const output = assertAllowedPath(args.output_path || defaultExportPath(input, format, Boolean(args.embed)));
   if (args.width && args.scale) throw new Error("Do not combine width and scale.");
   if (args.height && args.scale) throw new Error("Do not combine height and scale.");
   await assertWritable(output, args.overwrite);

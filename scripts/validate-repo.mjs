@@ -73,8 +73,8 @@ for (const server of requiredServers) {
 }
 for (const serverFile of ["live-server.mjs", "server.mjs", "powerpoint-server.mjs", "officejs-bridge.mjs"]) {
   const source = await fs.readFile(path.join(pluginRoot, "scripts", serverFile), "utf8");
-  if (!source.includes(`const SERVER_VERSION = "${manifest.version}";`)) {
-    throw new Error(`${serverFile} does not report plugin version ${manifest.version}.`);
+  if (!source.includes('VERSION as SERVER_VERSION') || !source.includes('"./guardrails.mjs"')) {
+    throw new Error(`${serverFile} does not import the single version source from guardrails.mjs.`);
   }
 }
 for (const serverFile of ["live-server.mjs", "server.mjs", "powerpoint-server.mjs"]) {
@@ -225,6 +225,7 @@ for (const skill of requiredSkills) {
 async function collectFiles(directory) {
   const files = [];
   for (const item of await fs.readdir(directory, { withFileTypes: true })) {
+    if (item.name === ".git" || item.name === "node_modules" || item.name === "__pycache__") continue;
     const fullPath = path.join(directory, item.name);
     if (item.isDirectory()) files.push(...await collectFiles(fullPath));
     else files.push(fullPath);

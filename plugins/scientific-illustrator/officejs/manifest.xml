@@ -25,7 +25,7 @@
     </Sets>
   </Requirements>
   <DefaultSettings>
-    <SourceLocation DefaultValue="https://localhost:17645/taskpane.html" />
+    <SourceLocation DefaultValue="https://localhost:17645/taskpane.html?token=__SCIENTIFIC_ILLUSTRATOR_TOKEN__" />
   </DefaultSettings>
   <Permissions>ReadWriteDocument</Permissions>
 </OfficeApp>

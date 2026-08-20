@@ -8,10 +8,10 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { getOfficeJsBridge } from "./officejs-bridge.mjs";
+import { VERSION as SERVER_VERSION, assertAllowedPath } from "./guardrails.mjs";
 
 const execFileAsync = promisify(execFile);
 const SERVER_NAME = "powerpoint-live";
-const SERVER_VERSION = "1.5.4";
 const SUPPORTED_PROTOCOLS = new Set(["2024-11-05", "2025-03-26", "2025-06-18"]);
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const BRIDGE_PATH = path.join(SCRIPT_DIR, "powerpoint-bridge.ps1");
@@ -22,6 +22,27 @@ const MAX_BUFFER = 20 * 1024 * 1024;
 const officeJsBridge = getOfficeJsBridge();
 const VALID_BACKENDS = new Set(["auto", "officejs", "com", "ooxml"]);
 const VALID_FOCUS_POLICIES = new Set(["preserve", "foreground"]);
+const SEQUENCE_OP_REQUIRED = {
+  add_slide: [],
+  add_textbox: ["x", "y", "width", "height", "text"],
+  add_shape: ["x", "y", "width", "height", "shape_name"],
+  add_image: ["x", "y", "width", "height", "image_path", "raster_reason", "source_is_tightly_cropped", "atomic_raster_unit", "contains_reconstructable_content", "decomposition_note"],
+  add_line: ["x1", "y1", "x2", "y2"],
+  add_connector: ["shape_id", "source_shape_id", "target_shape_id"],
+  add_table: ["x", "y", "width", "height", "rows", "columns"],
+  update_table_cell: ["table_id", "row", "column", "text"],
+  update_table_layout: ["table_id", "width", "height"],
+  add_chart: ["x", "y", "width", "height", "chart_type", "categories", "series"],
+  duplicate_shape: ["shape_id"],
+  group_shapes: ["shape_ids"],
+  ungroup_shape: ["group_id"],
+  set_z_order: ["shape_id", "z_order"],
+  align_shapes: ["shape_ids", "align"],
+  distribute_shapes: ["shape_ids", "distribute"],
+  update_shape: ["shape_id"],
+  activate_slide: ["slide_index"],
+  wait: [],
+};
 let backendPreference = VALID_BACKENDS.has(String(process.env.SCIENTIFIC_ILLUSTRATOR_PPT_BACKEND || "auto").toLowerCase())
   ? String(process.env.SCIENTIFIC_ILLUSTRATOR_PPT_BACKEND || "auto").toLowerCase()
   : "auto";
@@ -1043,6 +1064,13 @@ async function runSequence(args) {
     for (let index = 0; index < args.operations.length; index += 1) {
       const operation = { ...args.operations[index] };
       const type = operation.type;
+      const requiredFields = SEQUENCE_OP_REQUIRED[type];
+      if (requiredFields) {
+        const missing = requiredFields.filter((field) => operation[field] === undefined || operation[field] === null);
+        if (missing.length) {
+          throw new Error(`Sequence operation at index ${index} (type=${type}) is missing required field(s): ${missing.join(", ")}. No object was dispatched for this operation.`);
+        }
+      }
       delete operation.type;
       if (type === "wait") {
         if (pacingMode !== "fast") await flushFileRefresh("before_wait");
