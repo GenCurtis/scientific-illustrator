@@ -61,7 +61,9 @@ To invoke a skill, load it with the `skill` tool: `skill({ name: "edit-powerpoin
 
 Set these environment variables to tighten the local file access surface:
 
-- `SCIENTIFIC_ILLUSTRATOR_ALLOWED_ROOT` - restrict every file argument to a directory (e.g. your project folder) instead of the whole disk.
+- `SCIENTIFIC_ILLUSTRATOR_ALLOWED_ROOT` - restrict every file argument to a directory (e.g. your project folder) instead of the whole disk. The check also resolves symlinks, so a link placed inside the root cannot redirect a read/write outside it.
 - `SCIENTIFIC_ILLUSTRATOR_MAX_IMAGE_BYTES` - lower the per-image size cap from the default 64 MB.
+
+The Office.js bridge protects its local HTTPS task-pane assets with a per-machine page token written to `page_token_path` in the state directory. `officejs-setup.mjs prepare` writes a tokenized `manifest.xml` into the state dir; sideload that generated manifest (not the repo template) so the token reaches the task pane. Any asset request without the token is rejected with 401.
 
 See `references/onboarding.md` and `references/profiles.md` for brand onboarding and multi-client profiles, which work identically in OpenCode.
