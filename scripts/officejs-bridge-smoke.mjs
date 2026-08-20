@@ -39,12 +39,12 @@ function requestJson(port, method, route, token, body) {
   });
 }
 
-function requestAsset(port, route) {
+function requestAsset(port, route, token) {
   return new Promise((resolve, reject) => {
     const request = https.request({
       hostname: "127.0.0.1",
       port,
-      path: route,
+      path: token ? `${route}?token=${encodeURIComponent(token)}` : route,
       method: "GET",
       rejectUnauthorized: false,
     }, (response) => {
@@ -88,11 +88,13 @@ try {
   assert.equal(health.value.version, "1.5.4");
 
   for (const icon of ["icon-32.png", "icon-64.png"]) {
-    const asset = await requestAsset(started.port, `/assets/${icon}`);
+    const asset = await requestAsset(started.port, `/assets/${icon}`, bridge.pageToken);
     assert.equal(asset.status, 200);
     assert.equal(asset.contentType, "image/png");
     assert.deepEqual(asset.body.subarray(0, 8), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
   }
+  const denied = await requestAsset(started.port, "/assets/icon-32.png");
+  assert.equal(denied.status, 401);
 
   const unauthorized = await requestJson(started.port, "POST", "/api/register", "wrong-token", { client_id: "smoke-client-1" });
   assert.equal(unauthorized.status, 401);

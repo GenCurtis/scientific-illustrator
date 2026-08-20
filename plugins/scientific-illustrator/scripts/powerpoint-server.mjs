@@ -23,25 +23,25 @@ const officeJsBridge = getOfficeJsBridge();
 const VALID_BACKENDS = new Set(["auto", "officejs", "com", "ooxml"]);
 const VALID_FOCUS_POLICIES = new Set(["preserve", "foreground"]);
 const SEQUENCE_OP_REQUIRED = {
-  add_slide: [],
-  add_textbox: ["x", "y", "width", "height", "text"],
-  add_shape: ["x", "y", "width", "height", "shape_name"],
-  add_image: ["x", "y", "width", "height", "image_path", "raster_reason", "source_is_tightly_cropped", "atomic_raster_unit", "contains_reconstructable_content", "decomposition_note"],
-  add_line: ["x1", "y1", "x2", "y2"],
-  add_connector: ["shape_id", "source_shape_id", "target_shape_id"],
-  add_table: ["x", "y", "width", "height", "rows", "columns"],
-  update_table_cell: ["table_id", "row", "column", "text"],
-  update_table_layout: ["table_id", "width", "height"],
-  add_chart: ["x", "y", "width", "height", "chart_type", "categories", "series"],
-  duplicate_shape: ["shape_id"],
-  group_shapes: ["shape_ids"],
-  ungroup_shape: ["group_id"],
-  set_z_order: ["shape_id", "z_order"],
-  align_shapes: ["shape_ids", "align"],
-  distribute_shapes: ["shape_ids", "distribute"],
-  update_shape: ["shape_id"],
-  activate_slide: ["slide_index"],
-  wait: [],
+  add_slide: { required: ["slide_index"] },
+  add_textbox: { required: ["slide_index", "text", "left", "top", "width", "height"] },
+  add_shape: { required: ["slide_index", "left", "top", "width", "height"], anyOf: [["shape"], ["shape_type_id"]] },
+  add_image: { required: ["slide_index", "image_path", "left", "top", "width", "height", "raster_reason", "source_is_tightly_cropped", "atomic_raster_unit", "contains_reconstructable_content", "decomposition_note"] },
+  add_line: { required: ["slide_index", "begin_x", "begin_y", "end_x", "end_y"] },
+  add_connector: { required: ["slide_index", "source_name", "target_name"] },
+  add_table: { required: ["slide_index", "rows", "columns", "left", "top", "width", "height"] },
+  update_table_cell: { required: ["slide_index", "row", "column"], anyOf: [["shape_name"], ["shape_id"]] },
+  update_table_layout: { required: ["slide_index"], anyOf: [["shape_name"], ["shape_id"]] },
+  add_chart: { required: ["slide_index", "left", "top", "width", "height", "categories", "series"], anyOf: [["chart_type"], ["chart_type_id"]] },
+  duplicate_shape: { required: ["slide_index", "new_name"], anyOf: [["shape_name"], ["shape_id"]] },
+  group_shapes: { required: ["slide_index", "shape_names"] },
+  ungroup_shape: { required: ["slide_index"], anyOf: [["shape_name"], ["shape_id"]] },
+  set_z_order: { required: ["slide_index", "command"], anyOf: [["shape_name"], ["shape_id"]] },
+  align_shapes: { required: ["slide_index", "shape_names", "alignment"] },
+  distribute_shapes: { required: ["slide_index", "shape_names", "direction"] },
+  update_shape: { required: ["slide_index"], anyOf: [["shape_name"], ["shape_id"]] },
+  activate_slide: { required: ["slide_index"] },
+  wait: { required: [] },
 };
 let backendPreference = VALID_BACKENDS.has(String(process.env.SCIENTIFIC_ILLUSTRATOR_PPT_BACKEND || "auto").toLowerCase())
   ? String(process.env.SCIENTIFIC_ILLUSTRATOR_PPT_BACKEND || "auto").toLowerCase()
@@ -1066,9 +1066,14 @@ async function runSequence(args) {
       const type = operation.type;
       const requiredFields = SEQUENCE_OP_REQUIRED[type];
       if (requiredFields) {
-        const missing = requiredFields.filter((field) => operation[field] === undefined || operation[field] === null);
+        const missing = requiredFields.required.filter((field) => operation[field] === undefined || operation[field] === null);
         if (missing.length) {
           throw new Error(`Sequence operation at index ${index} (type=${type}) is missing required field(s): ${missing.join(", ")}. No object was dispatched for this operation.`);
+        }
+        const anyOfGroups = requiredFields.anyOf || [];
+        const unsatisfiedGroups = anyOfGroups.filter((group) => !group.some((field) => operation[field] !== undefined && operation[field] !== null));
+        if (anyOfGroups.length && unsatisfiedGroups.length === anyOfGroups.length) {
+          throw new Error(`Sequence operation at index ${index} (type=${type}) requires one of: ${anyOfGroups.map((group) => group.join(" or ")).join(", ")}. No object was dispatched for this operation.`);
         }
       }
       delete operation.type;
