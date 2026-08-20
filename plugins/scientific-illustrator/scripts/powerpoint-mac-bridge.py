@@ -2201,13 +2201,17 @@ ACTIONS = {
 
 
 def _assert_allowed_path(file_path: str) -> str:
-    """Restrict file arguments to the configured root, mirroring the JS-layer guard."""
+    """Restrict file arguments to the configured root, mirroring the JS-layer guard.
+
+    realpath resolves symlinks so a link inside the root cannot redirect an I/O
+    operation outside it; the resolved result is what the handlers then use.
+    """
+    resolved = os.path.realpath(os.path.expanduser(file_path))
     raw = os.environ.get("SCIENTIFIC_ILLUSTRATOR_ALLOWED_ROOT")
     if not raw or not str(raw).strip():
-        return os.path.abspath(file_path)
-    root = os.path.abspath(os.path.expanduser(str(raw).strip()))
-    resolved = os.path.abspath(os.path.expanduser(file_path))
-    if resolved != root and not resolved.startswith(root + os.sep):
+        return resolved
+    root = os.path.realpath(os.path.expanduser(str(raw).strip()))
+    if os.path.normcase(resolved) != os.path.normcase(root) and not os.path.normcase(resolved).startswith(os.path.normcase(root + os.sep)):
         raise ValueError(f"Path is outside the configured SCIENTIFIC_ILLUSTRATOR_ALLOWED_ROOT ({root}): {resolved}")
     return resolved
 

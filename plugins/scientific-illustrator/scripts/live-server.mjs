@@ -7,7 +7,7 @@ import path from "node:path";
 import os from "node:os";
 import net from "node:net";
 import { drawioInstallHint, resolveDrawioExecutable } from "./drawio-path.mjs";
-import { VERSION as SERVER_VERSION, MAX_IMAGE_BYTES, assertAllowedPath, sniffImageMime, atomicWrite } from "./guardrails.mjs";
+import { VERSION as SERVER_VERSION, MAX_IMAGE_BYTES, assertAllowedPath, assertAllowedRealPath, sniffImageMime, atomicWrite } from "./guardrails.mjs";
 
 const SERVER_NAME = "drawio-live";
 const DRAWIO = resolveDrawioExecutable();
@@ -894,7 +894,7 @@ async function addImage(args) {
   }
   if (crop.left + crop.right >= 100 || crop.top + crop.bottom >= 100) throw new Error("Opposing crop percentages must total less than 100%.");
   const mimeType = mimeTypeForImage(imagePath);
-  const resolvedPath = assertAllowedPath(imagePath);
+  const resolvedPath = await assertAllowedRealPath(imagePath);
   const imageStat = await fs.stat(resolvedPath);
   if (imageStat.size > MAX_IMAGE_BYTES) {
     throw new Error(
@@ -2005,7 +2005,7 @@ async function launchLive(args) {
       `--user-data-dir=${profileDir}`,
       "--disable-features=CalculateNativeWinOcclusion",
     ];
-    if (args.file_path) argv.push(assertAllowedPath(args.file_path));
+    if (args.file_path) argv.push(await assertAllowedRealPath(args.file_path));
     live.process = spawn(DRAWIO.executable, argv, { detached: false, stdio: "ignore", windowsHide: false });
     await new Promise((resolve, reject) => {
       live.process.once("spawn", resolve);
@@ -2160,7 +2160,7 @@ async function handleTool(name, args = {}) {
     case "drawio_live_audit_figure":
       return { value: await auditFigure(args) };
     case "drawio_live_save_snapshot": {
-      const output = assertAllowedPath(args.output_path);
+      const output = await assertAllowedRealPath(args.output_path);
       if (path.extname(output).toLowerCase() !== ".drawio") throw new Error("output_path must end with .drawio");
       try {
         await fs.access(output);

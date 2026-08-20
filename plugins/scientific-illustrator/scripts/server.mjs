@@ -7,7 +7,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { drawioInstallHint, resolveDrawioExecutable } from "./drawio-path.mjs";
-import { VERSION as SERVER_VERSION, assertAllowedPath, atomicWrite } from "./guardrails.mjs";
+import { VERSION as SERVER_VERSION, assertAllowedPath, assertAllowedRealPath, atomicWrite } from "./guardrails.mjs";
 
 const execFileAsync = promisify(execFile);
 const SERVER_NAME = "scientific-illustrator-file-utils";
@@ -656,7 +656,7 @@ function inspectXml(xml) {
 }
 
 async function imageDataUri(imagePath) {
-  const resolved = path.resolve(imagePath);
+  const resolved = await assertAllowedRealPath(imagePath);
   const data = await fs.readFile(resolved);
   const ext = path.extname(resolved).toLowerCase();
   const mime = ext === ".png" ? "image/png" : ext === ".jpg" || ext === ".jpeg" ? "image/jpeg" : ext === ".svg" ? "image/svg+xml" : null;
@@ -820,7 +820,7 @@ async function writeValidatedXml(outputPath, xml, overwrite) {
 }
 
 async function createTraceDocument(args) {
-  const reference = assertAllowedPath(args.reference_path);
+  const reference = await assertAllowedRealPath(args.reference_path);
   const target = normalizeOutputPath(args.output_path);
   const { dataUri, data, ext } = await imageDataUri(reference);
   const original = readImageSize(data, ext);
@@ -872,10 +872,10 @@ async function repairPng(filePath) {
 }
 
 async function exportDiagram(args) {
-  const input = normalizeOutputPath(args.input_path);
+  const input = await assertAllowedRealPath(normalizeOutputPath(args.input_path));
   await fs.access(input);
   const format = args.format;
-  const output = assertAllowedPath(args.output_path || defaultExportPath(input, format, Boolean(args.embed)));
+  const output = await assertAllowedRealPath(args.output_path || defaultExportPath(input, format, Boolean(args.embed)));
   if (args.width && args.scale) throw new Error("Do not combine width and scale.");
   if (args.height && args.scale) throw new Error("Do not combine height and scale.");
   await assertWritable(output, args.overwrite);
@@ -924,13 +924,13 @@ async function handleTool(name, args = {}) {
       assertFileConstructionContext(args, name);
       return writeValidatedXml(args.output_path, args.xml, args.overwrite);
     case "drawio_validate": {
-      const input = normalizeOutputPath(args.input_path);
+      const input = await assertAllowedRealPath(normalizeOutputPath(args.input_path));
       const xml = await fs.readFile(input, "utf8");
       const { _pages, ...report } = inspectXml(xml);
       return { input_path: input, ...report };
     }
     case "drawio_inspect": {
-      const input = normalizeOutputPath(args.input_path);
+      const input = await assertAllowedRealPath(normalizeOutputPath(args.input_path));
       const xml = await fs.readFile(input, "utf8");
       const report = inspectXml(xml);
       const maxCells = args.max_cells || 200;
@@ -969,7 +969,7 @@ async function handleTool(name, args = {}) {
       };
     }
     case "drawio_update_cells": {
-      const input = normalizeOutputPath(args.input_path);
+      const input = await assertAllowedRealPath(normalizeOutputPath(args.input_path));
       const output = normalizeOutputPath(args.output_path || input);
       const xml = await fs.readFile(input, "utf8");
       const updated = patchDiagramXml(xml, args.patches);
@@ -980,7 +980,7 @@ async function handleTool(name, args = {}) {
     case "drawio_export":
       return exportDiagram(args);
     case "drawio_open": {
-      const input = normalizeOutputPath(args.input_path);
+      const input = await assertAllowedRealPath(normalizeOutputPath(args.input_path));
       await fs.access(input);
       const child = spawn(DRAWIO.executable, [input], { detached: true, stdio: "ignore", windowsHide: false });
       child.unref();
