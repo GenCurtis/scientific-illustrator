@@ -6,7 +6,7 @@ import https from "node:https";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { VERSION as SERVER_VERSION, assertAllowedPath } from "./guardrails.mjs";
+import { VERSION as SERVER_VERSION } from "./guardrails.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const PLUGIN_DIR = path.resolve(SCRIPT_DIR, "..");
@@ -325,7 +325,8 @@ export class OfficeJsCommandBridge {
         return;
       }
       const queryToken = String(url.searchParams.get("token") || "");
-      const headerToken = String(request.headers.authorization || "").replace(/^Bearer\s+/i, "");
+      const authHeader = String(request.headers.authorization || "");
+      const headerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
       if (!secureTokenEqual(queryToken || headerToken, this.pageToken)) {
         jsonResponse(response, 401, { error: "A valid page token is required to load the Scientific Illustrator task pane." });
         return;
