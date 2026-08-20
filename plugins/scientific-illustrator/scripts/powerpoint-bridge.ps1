@@ -19,6 +19,22 @@ function Get-Argument {
     return $Default
 }
 
+function Assert-AllowedPath {
+    param([string]$FilePath)
+    if ([string]::IsNullOrWhiteSpace($FilePath)) { return $FilePath }
+    $rootRaw = [Environment]::GetEnvironmentVariable("SCIENTIFIC_ILLUSTRATOR_ALLOWED_ROOT")
+    if ([string]::IsNullOrWhiteSpace($rootRaw)) { return [IO.Path]::GetFullPath($FilePath) }
+    $root = [IO.Path]::GetFullPath($rootRaw.Trim())
+    $resolved = [IO.Path]::GetFullPath($FilePath)
+    $separator = [IO.Path]::DirectorySeparatorChar
+    $within = $resolved.Equals($root, [StringComparison]::OrdinalIgnoreCase) -or
+        $resolved.StartsWith($root.TrimEnd($separator) + $separator, [StringComparison]::OrdinalIgnoreCase)
+    if (-not $within) {
+        throw "Path is outside the configured SCIENTIFIC_ILLUSTRATOR_ALLOWED_ROOT ($root): $resolved"
+    }
+    return $resolved
+}
+
 $script:FocusPolicy = "preserve"
 
 function Normalize-FocusPolicy {
@@ -1919,6 +1935,14 @@ try {
     $requestedFocusPolicy = Get-Argument $payload.arguments "focus_policy" $env:SCIENTIFIC_ILLUSTRATOR_FOCUS_POLICY
     $script:FocusPolicy = Normalize-FocusPolicy $requestedFocusPolicy
     $previousForegroundWindow = if ($script:FocusPolicy -eq "preserve") { Get-ForegroundWindowHandle } else { [IntPtr]::Zero }
+    foreach ($pathKey in @("file_path", "output_path", "image_path", "reference_path", "input_path")) {
+        if (Test-Property $payload.arguments $pathKey) {
+            $pathValue = $payload.arguments.PSObject.Properties[$pathKey].Value
+            if ($pathValue -is [string] -and -not [string]::IsNullOrWhiteSpace($pathValue)) {
+                $payload.arguments.PSObject.Properties[$pathKey].Value = Assert-AllowedPath $pathValue
+            }
+        }
+    }
     try {
         $result = Invoke-Action ([string]$payload.action) $payload.arguments
     }

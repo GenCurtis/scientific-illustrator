@@ -8,7 +8,7 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { getOfficeJsBridge } from "./officejs-bridge.mjs";
-import { VERSION as SERVER_VERSION, assertAllowedPath } from "./guardrails.mjs";
+import { VERSION as SERVER_VERSION, assertAllowedRealPath, atomicWrite } from "./guardrails.mjs";
 
 const execFileAsync = promisify(execFile);
 const SERVER_NAME = "powerpoint-live";
@@ -43,6 +43,39 @@ const SEQUENCE_OP_REQUIRED = {
   activate_slide: { required: ["slide_index"] },
   wait: { required: [] },
 };
+
+// Validates one sequence operation against SEQUENCE_OP_REQUIRED before any
+// object is dispatched. Extracted so the edge cases are unit-testable without
+// a live PowerPoint. Returns a descriptive Error or null when valid.
+function validateSequenceOperation(operation, index) {
+  const type = operation?.type;
+  const requiredFields = SEQUENCE_OP_REQUIRED[type];
+  if (!requiredFields) return null;
+  const missing = requiredFields.required.filter((field) => operation[field] === undefined || operation[field] === null);
+  if (missing.length) {
+    return new Error(`Sequence operation at index ${index} (type=${type}) is missing required field(s): ${missing.join(", ")}. No object was dispatched for this operation.`);
+  }
+  const anyOfGroups = requiredFields.anyOf || [];
+  const unsatisfiedGroups = anyOfGroups.filter((group) => !group.some((field) => operation[field] !== undefined && operation[field] !== null));
+  if (anyOfGroups.length && unsatisfiedGroups.length === anyOfGroups.length) {
+    return new Error(`Sequence operation at index ${index} (type=${type}) requires one of: ${anyOfGroups.map((group) => group.join(" or ")).join(", ")}. No object was dispatched for this operation.`);
+  }
+  return null;
+}
+
+// Applies the allowed-root guard (with symlink resolution) to every path
+// argument before it reaches a bridge process, so no backend can read or write
+// outside the configured root even if the bridge itself is invoked directly.
+const PATH_ARG_KEYS = ["file_path", "output_path", "image_path", "reference_path", "input_path"];
+async function sanitizePathArgs(args = {}) {
+  const cleaned = { ...args };
+  for (const key of PATH_ARG_KEYS) {
+    if (typeof cleaned[key] === "string" && cleaned[key].trim()) {
+      cleaned[key] = await assertAllowedRealPath(cleaned[key]);
+    }
+  }
+  return cleaned;
+}
 let backendPreference = VALID_BACKENDS.has(String(process.env.SCIENTIFIC_ILLUSTRATOR_PPT_BACKEND || "auto").toLowerCase())
   ? String(process.env.SCIENTIFIC_ILLUSTRATOR_PPT_BACKEND || "auto").toLowerCase()
   : "auto";
@@ -787,7 +820,7 @@ async function ooxmlPythonExecutable() {
 
 async function runOoxmlBridge(action, args = {}) {
   if (!existsSync(OOXML_BRIDGE_PATH)) throw new Error(`OOXML presentation bridge is missing: ${OOXML_BRIDGE_PATH}`);
-  const payload = Buffer.from(JSON.stringify({ action, arguments: args }), "utf8").toString("base64");
+  const payload = Buffer.from(JSON.stringify({ action, arguments: await sanitizePathArgs(args) }), "utf8").toString("base64");
   const launcher = await ooxmlPythonExecutable();
   try {
     const { stdout } = await execFileAsync(launcher.executable, [...launcher.args, OOXML_BRIDGE_PATH, payload], {
@@ -857,8 +890,9 @@ function officeJsImageMime(filePath) {
 async function prepareOfficeJsArguments(action, args) {
   const prepared = { ...args };
   if (action === "add_image") {
-    const source = path.resolve(String(args.image_path || ""));
-    if (!path.isAbsolute(String(args.image_path || ""))) throw new Error("powerpoint_add_image requires an absolute image_path.");
+    const raw = String(args.image_path || "");
+    if (!path.isAbsolute(raw)) throw new Error("powerpoint_add_image requires an absolute image_path.");
+    const source = await assertAllowedRealPath(raw);
     if (!existsSync(source)) throw new Error(`Image file not found: ${source}`);
     const cropRequested = ["crop_left_percent", "crop_top_percent", "crop_right_percent", "crop_bottom_percent", "crop_left_points", "crop_top_points", "crop_right_points", "crop_bottom_points"].some((key) => args[key] !== undefined);
     if (args.source_is_tightly_cropped !== true || cropRequested) {
@@ -872,23 +906,19 @@ async function prepareOfficeJsArguments(action, args) {
 
 async function writeOfficeJsOutput(action, args, result) {
   if (action === "export_slide_image") {
-    const outputPath = String(args.output_path || "");
-    if (!path.isAbsolute(outputPath)) throw new Error("powerpoint_export_slide_image requires an absolute output_path.");
+    const outputPath = await assertAllowedRealPath(String(args.output_path || ""));
     if (existsSync(outputPath) && args.overwrite !== true) throw new Error(`Output exists: ${outputPath}`);
     if (!result.image_base64) throw new Error("Office.js renderer returned no image data.");
-    await fs.mkdir(path.dirname(outputPath), { recursive: true });
-    await fs.writeFile(outputPath, Buffer.from(result.image_base64, "base64"));
+    await atomicWrite(outputPath, Buffer.from(result.image_base64, "base64"));
     const value = { ...result, output_path: outputPath };
     delete value.image_base64;
     return value;
   }
   if (action === "save" && args.output_path) {
-    const outputPath = String(args.output_path);
-    if (!path.isAbsolute(outputPath)) throw new Error("powerpoint_save requires an absolute output_path.");
+    const outputPath = await assertAllowedRealPath(String(args.output_path));
     if (existsSync(outputPath) && args.overwrite !== true) throw new Error(`Output exists: ${outputPath}`);
     if (!result.file_base64) throw new Error("Office.js editable presentation export returned no PPTX data.");
-    await fs.mkdir(path.dirname(outputPath), { recursive: true });
-    await fs.writeFile(outputPath, Buffer.from(result.file_base64, "base64"));
+    await atomicWrite(outputPath, Buffer.from(result.file_base64, "base64"));
     const value = { ...result, output_path: outputPath, saved: true };
     delete value.file_base64;
     return value;
@@ -907,7 +937,7 @@ async function runOfficeJsBridge(action, args = {}) {
 
 async function runComBridge(action, args = {}) {
   if (process.platform !== "win32") throw new Error("The PowerPoint COM backend is available only on Windows with desktop Microsoft PowerPoint.");
-  const payload = Buffer.from(JSON.stringify({ action, arguments: args }), "utf8").toString("base64");
+  const payload = Buffer.from(JSON.stringify({ action, arguments: await sanitizePathArgs(args) }), "utf8").toString("base64");
   try {
     const { stdout } = await execFileAsync(
       powershellExecutable(),
@@ -1064,18 +1094,8 @@ async function runSequence(args) {
     for (let index = 0; index < args.operations.length; index += 1) {
       const operation = { ...args.operations[index] };
       const type = operation.type;
-      const requiredFields = SEQUENCE_OP_REQUIRED[type];
-      if (requiredFields) {
-        const missing = requiredFields.required.filter((field) => operation[field] === undefined || operation[field] === null);
-        if (missing.length) {
-          throw new Error(`Sequence operation at index ${index} (type=${type}) is missing required field(s): ${missing.join(", ")}. No object was dispatched for this operation.`);
-        }
-        const anyOfGroups = requiredFields.anyOf || [];
-        const unsatisfiedGroups = anyOfGroups.filter((group) => !group.some((field) => operation[field] !== undefined && operation[field] !== null));
-        if (anyOfGroups.length && unsatisfiedGroups.length === anyOfGroups.length) {
-          throw new Error(`Sequence operation at index ${index} (type=${type}) requires one of: ${anyOfGroups.map((group) => group.join(" or ")).join(", ")}. No object was dispatched for this operation.`);
-        }
-      }
+      const validationError = validateSequenceOperation(operation, index);
+      if (validationError) throw validationError;
       delete operation.type;
       if (type === "wait") {
         if (pacingMode !== "fast") await flushFileRefresh("before_wait");
@@ -1331,3 +1351,5 @@ rl.on("line", (line) => {
 
 process.on("uncaughtException", (error) => process.stderr.write(`[${SERVER_NAME}] ${error.stack || error.message}\n`));
 process.on("unhandledRejection", (error) => process.stderr.write(`[${SERVER_NAME}] ${error?.stack || error}\n`));
+
+export { SEQUENCE_OP_REQUIRED, validateSequenceOperation, sanitizePathArgs };

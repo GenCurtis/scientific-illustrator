@@ -63,7 +63,6 @@ async function generateCertificate() {
 async function generateManifest() {
   const token = await ensurePageToken();
   const template = await fs.readFile(paths.manifest_path, "utf8");
-  const manifestDir = path.dirname(paths.manifest_path);
   const generatedPath = path.join(paths.state_dir, "manifest.xml");
   const tokenized = template
     .replace("https://localhost:17645/taskpane.html?token=__SCIENTIFIC_ILLUSTRATOR_TOKEN__", `https://localhost:17645/taskpane.html?token=${encodeURIComponent(token)}`)
