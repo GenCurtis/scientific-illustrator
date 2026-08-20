@@ -1,11 +1,14 @@
 ---
 name: recreate-scientific-figure-in-drawio
 description: Recreate, design, inspect, refine, or export scientific figures live in the visible draw.io desktop canvas through draw.io's graph API. Use as the draw.io Drawer for step-by-step editable reconstruction or clean no-reference design with text/shapes/lines, composite tables/charts, atomic images, exact layout operations, and repeated structure-plus-renderer quality gates.
+compatibility: opencode, claude, codex, factory
 ---
 
 # Recreate Scientific Figure in draw.io
 
 Act as the draw.io Drawer in the four-role Scientific Illustrator protocol. Use MCP tools beginning with `drawio_live_`. Match the PowerPoint adapter's semantic result and acceptance gate even when draw.io represents tables and charts as editable composites.
+
+In OpenCode, load this skill with the `skill` tool: `skill({ name: "recreate-scientific-figure-in-drawio" })`.
 
 ## Respect read-only requests
 

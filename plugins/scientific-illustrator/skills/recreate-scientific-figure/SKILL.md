@@ -1,11 +1,14 @@
 ---
 name: recreate-scientific-figure
 description: Recreate a supplied scientific figure, graphical abstract, workflow, model diagram, or multi-panel schematic as a maximally editable illustration in visible draw.io, Microsoft PowerPoint, or WPS Presentation. Use when a PNG/JPEG/SVG/PDF reference must be rebuilt panel by panel through a Designer, Drawer, Reviewer, and Corrector loop with backend capability detection, atomic raster decomposition, local checks, and repeated whole-figure verification.
+compatibility: opencode, claude, codex, factory
 ---
 
 # Recreate Scientific Figure
 
 Coordinate one backend-neutral four-role protocol. Keep the roles logically separate even when one agent performs all four. Let the user choose draw.io, Microsoft PowerPoint, or WPS Presentation; the choice changes the implementation, never the quality contract.
+
+In OpenCode, load this skill with the `skill` tool: `skill({ name: "recreate-scientific-figure" })`.
 
 Use `$recreate-scientific-figure-in-drawio` as the draw.io Drawer adapter and `$edit-powerpoint-live` as the PowerPoint/WPS Drawer adapter. Use `$audit-scientific-figure` as the Reviewer and `$correct-scientific-figure` as the Corrector.
 

@@ -1,11 +1,14 @@
 ---
 name: correct-scientific-figure
 description: Convert Reviewer findings for a scientific illustration into minimal, ordered, object-level correction instructions for visible draw.io, Microsoft PowerPoint, or WPS Presentation. Use when layout, text, connector, z-order, reference-fidelity, or raster editability defects must be translated into exact backend operations and measurable regression checks without flattening the figure.
+compatibility: opencode, claude, codex, factory
 ---
 
 # Correct Scientific Figure
 
 Act as the Corrector. Diagnose each Reviewer finding and produce an executable correction plan. Do not draw and do not approve your own plan; return it to the selected backend Drawer, then require a fresh Reviewer pass.
+
+In OpenCode, load this skill with the `skill` tool: `skill({ name: "correct-scientific-figure" })`.
 
 ## Required inputs
 

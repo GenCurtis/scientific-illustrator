@@ -1,5 +1,0 @@
-?? gitbranch2.txt
-?? gitlog2.txt
-?? gitlog3.txt
-?? gitstatus2.txt
-?? gitstatus3.txt

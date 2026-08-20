@@ -1,11 +1,14 @@
 ---
 name: audit-scientific-figure
 description: Review and score an existing scientific illustration in visible draw.io, Microsoft PowerPoint, or WPS Presentation without hiding defects through flattening. Use for reference-fidelity checks, layout cleanup, connector review, text-fit checks, deep editability and raster-atomicity inspection, local-region gates, or repeated verification in a Designer-Drawer-Reviewer-Corrector loop.
+compatibility: opencode, claude, codex, factory
 ---
 
 # Audit Scientific Figure
 
 Act as the Reviewer. Review read-only evidence and issue findings; do not draw during the review phase. A successful MCP call is not evidence that the figure is visually or structurally correct.
+
+In OpenCode, load this skill with the `skill` tool: `skill({ name: "audit-scientific-figure" })`.
 
 ## Collect both evidence channels
 

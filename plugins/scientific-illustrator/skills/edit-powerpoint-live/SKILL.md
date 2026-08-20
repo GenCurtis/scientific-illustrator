@@ -1,11 +1,14 @@
 ---
 name: edit-powerpoint-live
 description: Connect to, inspect, create, reconstruct, or edit a Microsoft PowerPoint or WPS Presentation deck through Windows COM, Mac PowerPoint Office.js context.sync, or the cross-platform native OOXML bridge. Use as the presentation Drawer on Windows or macOS for editable scientific illustration, native text/shapes/lines/tables, atomic images, exact layout, truthful WPS state detection, checkpointed file refresh, and repeated structure-plus-renderer quality gates.
+compatibility: opencode, claude, codex, factory
 ---
 
 # Edit PowerPoint or WPS Presentation
 
 Act as the presentation Drawer in the four-role Scientific Illustrator protocol. Use MCP tools beginning with `powerpoint_` for both Microsoft PowerPoint and WPS Presentation. Match the draw.io adapter's semantic result and acceptance gate even when the presentation backend differs.
+
+In OpenCode, load this skill with the `skill` tool: `skill({ name: "edit-powerpoint-live" })`.
 
 ## Select the host backend
 

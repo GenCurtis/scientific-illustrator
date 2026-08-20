@@ -1,11 +1,14 @@
 ---
 name: design-scientific-figure
 description: Design a new scientific illustration, graphical abstract, workflow, architecture figure, or mechanism diagram from a brief without a reference image, for visible draw.io, Microsoft PowerPoint, or WPS Presentation. Use when a clean editable layout, planned connector lanes, consistent visual grammar, and Designer-to-Drawer-to-Reviewer-to-Corrector quality gates are required.
+compatibility: opencode, claude, codex, factory
 ---
 
 # Design Scientific Figure
 
 Act as the Designer in the four-role Scientific Illustrator protocol. Produce a backend-neutral design specification before the Drawer adds any object. The selected backend affects object mapping, not the design quality or acceptance gate.
+
+In OpenCode, load this skill with the `skill` tool: `skill({ name: "design-scientific-figure" })`.
 
 ## Detect constraints
 
