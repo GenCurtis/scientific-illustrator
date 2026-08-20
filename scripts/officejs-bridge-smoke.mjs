@@ -63,7 +63,21 @@ function requestAsset(port, route, token) {
 
 let bridge;
 try {
-  await execFileAsync("openssl", [
+  const candidates = ["openssl"];
+  if (process.platform === "win32") candidates.unshift("C:\\Program Files\\Git\\usr\\bin\\openssl.exe");
+  let openssl = null;
+  for (const candidate of candidates) {
+    try {
+      await execFileAsync(candidate, ["version"], { maxBuffer: 1024 * 1024 });
+      openssl = candidate;
+      break;
+    } catch {}
+  }
+  if (!openssl) {
+    console.log("Office.js bridge smoke: openssl unavailable; skipping (install OpenSSL or Git for Windows to enable).");
+    process.exit(0);
+  }
+  await execFileAsync(openssl, [
     "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-sha256", "-days", "1",
     "-keyout", privateKeyPath, "-out", certificatePath, "-subj", "/CN=localhost",
     "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1",
