@@ -1,0 +1,2 @@
+?? gitlog2.txt
+?? gitstatus2.txt

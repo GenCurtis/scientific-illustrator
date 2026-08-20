@@ -1,0 +1,23 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "drawio-live": {
+      "type": "local",
+      "command": ["node", "plugins/scientific-illustrator/scripts/live-server.mjs"],
+      "cwd": "~/scientific-illustrator",
+      "enabled": true
+    },
+    "drawio-file-utils": {
+      "type": "local",
+      "command": ["node", "plugins/scientific-illustrator/scripts/server.mjs"],
+      "cwd": "~/scientific-illustrator",
+      "enabled": true
+    },
+    "powerpoint-live": {
+      "type": "local",
+      "command": ["node", "plugins/scientific-illustrator/scripts/powerpoint-server.mjs"],
+      "cwd": "~/scientific-illustrator",
+      "enabled": true
+    }
+  }
+}
