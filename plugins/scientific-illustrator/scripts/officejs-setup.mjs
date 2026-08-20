@@ -1,17 +1,30 @@
 #!/usr/bin/env node
 
 import { execFile } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { existsSync, promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { defaultOfficeJsPaths } from "./officejs-bridge.mjs";
+import { VERSION } from "./guardrails.mjs";
 
 const execFileAsync = promisify(execFile);
 const paths = defaultOfficeJsPaths();
 const command = String(process.argv[2] || "status").toLowerCase();
 const macManifestDir = path.join(os.homedir(), "Library", "Containers", "com.microsoft.Powerpoint", "Data", "Documents", "wef");
 const macManifestPath = path.join(macManifestDir, "scientific-illustrator-officejs.xml");
+
+async function ensurePageToken() {
+  await fs.mkdir(paths.state_dir, { recursive: true, mode: 0o700 });
+  try {
+    const existing = (await fs.readFile(paths.page_token_path, "utf8")).trim();
+    if (/^[A-Za-z0-9_-]{16,128}$/.test(existing)) return existing;
+  } catch {}
+  const token = randomBytes(32).toString("base64url");
+  await fs.writeFile(paths.page_token_path, token, { mode: 0o600 });
+  return token;
+}
 
 async function generateCertificate() {
   await fs.mkdir(paths.state_dir, { recursive: true, mode: 0o700 });
@@ -22,13 +35,13 @@ async function generateCertificate() {
     "-subj", "/CN=localhost/O=Scientific Illustrator Local Development",
   ];
   try {
-    await execFileAsync("openssl", [...common, "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1", "-addext", "basicConstraints=critical,CA:TRUE"], { maxBuffer: 4 * 1024 * 1024 });
+    await execFileAsync("openssl", [...common, "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1", "-addext", "basicConstraints=critical,CA:FALSE", "-addext", "keyUsage=critical,digitalSignature,keyEncipherment"], { maxBuffer: 4 * 1024 * 1024 });
   } catch (firstError) {
     const configPath = path.join(paths.state_dir, `openssl-${process.pid}.cnf`);
     const config = [
       "[req]", "distinguished_name=req_dn", "x509_extensions=v3_req", "prompt=no",
       "[req_dn]", "CN=localhost", "O=Scientific Illustrator Local Development",
-      "[v3_req]", "subjectAltName=@alt_names", "basicConstraints=critical,CA:TRUE", "keyUsage=critical,digitalSignature,keyEncipherment,keyCertSign",
+      "[v3_req]", "subjectAltName=@alt_names", "basicConstraints=critical,CA:FALSE", "keyUsage=critical,digitalSignature,keyEncipherment",
       "[alt_names]", "DNS.1=localhost", "IP.1=127.0.0.1", "",
     ].join("\n");
     await fs.writeFile(configPath, config, { mode: 0o600 });
@@ -47,25 +60,42 @@ async function generateCertificate() {
   return true;
 }
 
+async function generateManifest() {
+  const token = await ensurePageToken();
+  const template = await fs.readFile(paths.manifest_path, "utf8");
+  const manifestDir = path.dirname(paths.manifest_path);
+  const generatedPath = path.join(paths.state_dir, "manifest.xml");
+  const tokenized = template
+    .replace("https://localhost:17645/taskpane.html?token=__SCIENTIFIC_ILLUSTRATOR_TOKEN__", `https://localhost:17645/taskpane.html?token=${encodeURIComponent(token)}`)
+    .replace("<Version>1.5.4.0</Version>", `<Version>${VERSION}.0</Version>`);
+  await fs.writeFile(generatedPath, tokenized, { mode: 0o600 });
+  return { token, generatedPath };
+}
+
 async function sideloadMacManifest() {
   if (process.platform !== "darwin") throw new Error("Automatic manifest sideloading is currently provided for Microsoft PowerPoint on macOS only.");
   await fs.mkdir(macManifestDir, { recursive: true });
-  await fs.copyFile(paths.manifest_path, macManifestPath);
+  const { generatedPath } = await generateManifest();
+  await fs.copyFile(generatedPath, macManifestPath, fs.constants.COPYFILE_FICLONE);
   return macManifestPath;
 }
 
 function status() {
   const certificateReady = existsSync(paths.certificate_path) && existsSync(paths.private_key_path);
+  const pageTokenReady = existsSync(paths.page_token_path);
   return {
     officejs_backend: "officejs-context-sync",
     platform: process.platform,
     certificate_ready: certificateReady,
     certificate_path: paths.certificate_path,
     private_key_path: paths.private_key_path,
+    page_token_ready: pageTokenReady,
+    page_token_path: paths.page_token_path,
     source_manifest_path: paths.manifest_path,
+    generated_manifest_path: path.join(paths.state_dir, "manifest.xml"),
     sideload_manifest_path: process.platform === "darwin" ? macManifestPath : null,
     manifest_sideloaded: process.platform === "darwin" && existsSync(macManifestPath),
-    taskpane_url: "https://localhost:17645/taskpane.html",
+    taskpane_url: "https://localhost:17645/taskpane.html", // requires the page token as a query parameter or Bearer header
     trust_changed_automatically: false,
   };
 }

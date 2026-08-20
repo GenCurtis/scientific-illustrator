@@ -2200,12 +2200,27 @@ ACTIONS = {
 }
 
 
+def _assert_allowed_path(file_path: str) -> str:
+    """Restrict file arguments to the configured root, mirroring the JS-layer guard."""
+    raw = os.environ.get("SCIENTIFIC_ILLUSTRATOR_ALLOWED_ROOT")
+    if not raw or not str(raw).strip():
+        return os.path.abspath(file_path)
+    root = os.path.abspath(os.path.expanduser(str(raw).strip()))
+    resolved = os.path.abspath(os.path.expanduser(file_path))
+    if resolved != root and not resolved.startswith(root + os.sep):
+        raise ValueError(f"Path is outside the configured SCIENTIFIC_ILLUSTRATOR_ALLOWED_ROOT ({root}): {resolved}")
+    return resolved
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         raise SystemExit("Usage: powerpoint-mac-bridge.py <payload-base64>")
     payload = json.loads(base64.b64decode(sys.argv[1]).decode("utf-8"))
     action = str(payload["action"])
     arguments = payload.get("arguments") or {}
+    for key in ("file_path", "output_path", "image_path", "reference_path", "input_path"):
+        if arguments.get(key):
+            arguments[key] = _assert_allowed_path(arguments[key])
     if action not in ACTIONS:
         raise ValueError(f"Unsupported macOS PowerPoint action: {action}")
     result = ACTIONS[action](arguments)
