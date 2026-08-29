@@ -627,7 +627,9 @@ def _load(writable: bool = True) -> tuple[dict, Path, Presentation]:
     state, path = _require_path(False)
     if writable and state.get("read_only") is True:
         raise PermissionError("The managed presentation was launched read_only=true. Reopen it as a working copy before editing.")
-    return state, path, Presentation(path)
+    with open(path, "rb") as f:
+        stream = io.BytesIO(f.read())
+    return state, path, Presentation(stream)
 
 
 def _save(prs: Presentation, state: dict, path: Path, *, refresh: bool = True) -> None:

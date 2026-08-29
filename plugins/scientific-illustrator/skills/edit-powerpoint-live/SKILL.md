@@ -10,14 +10,24 @@ Act as the presentation Drawer in the four-role Scientific Illustrator protocol.
 
 In OpenCode, load this skill with the `skill` tool: `skill({ name: "edit-powerpoint-live" })`.
 
+## Windows Live COM Priority & Anti-File-Sprawl Rules
+
+> [!IMPORTANT]
+> **Core Principle: Live In-Place Canvas Manipulation (No File Sprawl)**
+> 1. **Zero Intermediate File Clutter**: NEVER write standalone Python scripts (`python-pptx`) that repeatedly dump new files (`slide_v1.pptx`, `slide_v2.pptx`, `slide_v3.pptx`) onto disk. This pollutes project directories and forces the user to reopen files repeatedly.
+> 2. **Live Active Window Modification**: On Windows with Microsoft PowerPoint, connect directly to the active PowerPoint instance via Windows COM (`GetActiveObject("PowerPoint.Application")`). Any addition, modification, color adjustment, or shape deletion must happen **live in place** on the user's active slide.
+> 3. **Execution Routing**:
+>    - If the `powerpoint-live` MCP is active: call `powerpoint_*` tools directly.
+>    - If executing via PowerShell / Python: directly connect to the running COM object (`$ppt = [Runtime.InteropServices.Marshal]::GetActiveObject("PowerPoint.Application")` / `win32com.client.GetActiveObject("PowerPoint.Application")`) or invoke `.agents/plugins/scientific-illustrator/scripts/powerpoint-bridge.ps1`.
+> 4. **Single Working File**: All modifications occur in the user's currently active presentation. Save to disk only once upon final delivery.
+
 ## Select the host backend
 
 Call `powerpoint_status` and `powerpoint_get_capabilities` with `host_application=auto` unless the user explicitly chooses `powerpoint` or `wps`. Apply these backend rules:
 
-- Windows Microsoft PowerPoint: use the live COM backend.
-- macOS Microsoft PowerPoint: prefer `officejs-context-sync` when the Scientific Illustrator task pane is connected; every object command must complete `context.sync()` before continuing.
-- macOS Microsoft PowerPoint without a connected task pane: use the isolated native OOXML working copy and label it as a file-backed fallback, not live object-by-object drawing.
-- Windows or macOS WPS Presentation: use the same standard editable PPTX working-copy backend and open it in WPS.
+- **Windows Microsoft PowerPoint (Default & Recommended)**: use the live COM backend attached to the active window.
+- **macOS Microsoft PowerPoint**: prefer `officejs-context-sync` when the Scientific Illustrator task pane is connected.
+- **WPS Presentation**: use only when the user explicitly requests WPS. If WPS is not installed, fail fast to PowerPoint COM.
 
 An explicit `host_application` selected by status/capability detection persists for later calls in that MCP session. After the first document mutation, require both `backend_selection.locked` and `backend_selection.locked_host` to match the intended software; the adapter must reject any attempt to switch between PowerPoint and WPS in the same task. Set `SCIENTIFIC_ILLUSTRATOR_PPT_HOST=wps` only when a task must also force WPS through the environment. Do not claim COM-style in-memory attachment in file-backed mode. Report `target_application`, `microsoft_powerpoint_used`, `backend`, managed path, and renderer from tool results.
 
@@ -112,6 +122,25 @@ After each completed region:
 7. Export and audit again.
 
 Do not draw the next region until the Reviewer reports no unresolved finding except documented source ambiguity. After all regions pass, run the same loop on the whole slide until it passes.
+
+## Academic Styling Guidelines & Math Formulas
+
+Apply top-tier academic conference visual standards (consistent with `academic-plotting` and `academic-word-writing`):
+
+### 1. Curated Color Palettes
+Do NOT use default bright/neon PowerPoint theme colors. Use professional academic palettes:
+- **"Ocean Dusk" (Recommended)**: Deep Teal `#264653`, Teal `#2A9D8F`, Gold `#E9C46A`, Sandy Orange `#F4A261`, Burnt Coral (Accent/Ours) `#E76F51`.
+- **"Modern Minimal"**: Slate Blue `#E8EDF2`, Mint `#E8F2EE`, Sand `#F5F0E8` with Dark Blue `#2563EB` or Rose `#E11D48` accents.
+- **"Nord"**: Polar Night `#2E3440`, Frost Blue `#5E81AC`, Aurora Green `#A3BE8C`, Aurora Red `#BF616A`.
+- **"Okabe-Ito" (Colorblind-Safe)**: Orange `#E69F00`, Sky Blue `#56B4E9`, Green `#009E73`, Blue `#0072B2`, Vermillion `#D55E00`.
+
+### 2. Typography & Sizing
+- **Fonts**: Consistent sans-serif (`Calibri`, `Arial`, `Helvetica`) or serif (`Times New Roman`) matching the target paper.
+- **Hierarchy**: Section/Panel Title 14–16 pt bold; Module Header 11–12 pt bold; Body / Descriptions 9.5–10.5 pt regular; Annotations / Badges 8–9 pt.
+- **Line weights**: Connectors and borders should use 1.0–1.75 pt stroke; accent/flow arrows 2.0–2.5 pt.
+
+### 3. Mathematical Variables & Formulas (OMML)
+When inserting equations, mathematical variables, or notation subscripts into shape textboxes, format variables cleanly (e.g. $x_i$, $\mathcal{L}_{\text{total}}$, $\theta \sim \mathcal{N}(0, 1)$) or inject native Office Math (OMML) following `academic-word-writing` patterns to ensure crisp vector formula rendering.
 
 ## Acceptance gate
 
