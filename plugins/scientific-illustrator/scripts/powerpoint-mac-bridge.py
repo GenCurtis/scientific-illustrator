@@ -631,7 +631,6 @@ def _load(writable: bool = True) -> tuple[dict, Path, Presentation]:
         stream = io.BytesIO(f.read())
     return state, path, Presentation(stream)
 
-
 def _save(prs: Presentation, state: dict, path: Path, *, refresh: bool = True) -> None:
     temp_path = path.with_suffix(".saving.pptx")
     prs.save(temp_path)

@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "drawio-live": {
+      "command": "node",
+      "args": [
+        "plugins/scientific-illustrator/scripts/live-server.mjs"
+      ],
+      "cwd": "C:/path/to/scientific-illustrator"
+    },
+    "drawio-file-utils": {
+      "command": "node",
+      "args": [
+        "plugins/scientific-illustrator/scripts/server.mjs"
+      ],
+      "cwd": "C:/path/to/scientific-illustrator"
+    },
+    "powerpoint-live": {
+      "command": "node",
+      "args": [
+        "plugins/scientific-illustrator/scripts/powerpoint-server.mjs"
+      ],
+      "cwd": "C:/path/to/scientific-illustrator"
+    }
+  }
+}

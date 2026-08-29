@@ -127,6 +127,12 @@ codex plugin add scientific-illustrator@scientific-illustrator-tools
 
 安装或更新后，都要重启 Codex 并新建任务。
 
+### 在 OpenCode 与 Antigravity 中使用
+
+本项目原生兼容支持 Agent Skills 开放标准与 MCP 协议的各类 Agent 环境：
+- **OpenCode 接入**：参见 [OpenCode 使用指南](docs/opencode.md) 与 opencode.json.example
+- **Google Antigravity 接入**：参见 [Antigravity 使用指南](docs/antigravity.md) 与 mcp_config.json.example
+
 <details>
 <summary><strong>Mac PowerPoint：启用逐对象实时绘制（可选）</strong></summary>
 
