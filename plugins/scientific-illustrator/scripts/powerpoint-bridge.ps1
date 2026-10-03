@@ -1563,14 +1563,14 @@ function Invoke-AddChart {
         if (-not [string]::IsNullOrWhiteSpace([string]$name)) { $shape.Name = [string]$name }
         $chart = $shape.Chart
         $chartData = $chart.ChartData
-        $chartData.Activate()
+        $null = $chartData.Activate()
         for ($attempt = 0; $attempt -lt 30 -and $null -eq $workbook; $attempt += 1) {
             try { $workbook = $chartData.Workbook } catch {}
             if ($null -eq $workbook) { Start-Sleep -Milliseconds 200 }
         }
         if ($null -eq $workbook) { throw "PowerPoint created the native chart but did not expose its embedded data workbook after 6 seconds." }
         $worksheet = $workbook.Worksheets.Item(1)
-        $worksheet.Cells.Clear()
+        $null = $worksheet.Cells.Clear()
         $worksheet.Cells.Item(1, 1).Value2 = ""
         for ($seriesIndex = 0; $seriesIndex -lt $seriesItems.Count; $seriesIndex += 1) {
             $series = $seriesItems[$seriesIndex]
@@ -1585,7 +1585,7 @@ function Invoke-AddChart {
         }
         $lastCell = $worksheet.Cells.Item($categories.Count + 1, $seriesItems.Count + 1)
         $sourceAddress = "='$($worksheet.Name.Replace("'", "''"))'!`$A`$1:$($lastCell.Address($true, $true, 1, $false))"
-        $chart.SetSourceData($sourceAddress)
+        $null = $chart.SetSourceData($sourceAddress)
         if (Test-Property $Arguments "title") {
             $chart.HasTitle = -1
             $chart.ChartTitle.Text = [string](Get-Argument $Arguments "title")
@@ -1607,7 +1607,7 @@ function Invoke-AddChart {
             $axis.HasTitle = -1
             $axis.AxisTitle.Text = [string](Get-Argument $Arguments "value_axis_title")
         }
-        try { $workbook.Close($true) } catch {}
+        try { $null = $workbook.Close($true) } catch {}
         $workbook = $null
         Show-Slide $application $slideIndex
         $summary = New-ShapeSummary $shape
@@ -1617,7 +1617,7 @@ function Invoke-AddChart {
         return $summary
     }
     catch {
-        try { if ($null -ne $workbook) { $workbook.Close($false) } } catch {}
+        try { if ($null -ne $workbook) { $null = $workbook.Close($false) } } catch {}
         try { if ($null -ne $shape) { $shape.Delete() } } catch {}
         throw
     }
@@ -1834,7 +1834,7 @@ function Invoke-Save {
     if (-not [string]::IsNullOrWhiteSpace($directory)) { $null = New-Item -ItemType Directory -Force -Path $directory }
     if (Test-Path -LiteralPath $resolved) { Remove-Item -LiteralPath $resolved -Force }
     if ($format -eq "pdf") {
-        $presentation.ExportAsFixedFormat($resolved, 2)
+        $presentation.SaveCopyAs($resolved, 32)
     }
     else {
         $presentation.SaveCopyAs($resolved, 24)

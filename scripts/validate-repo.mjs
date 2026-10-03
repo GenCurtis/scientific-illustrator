@@ -170,6 +170,7 @@ await fs.access(path.join(root, "scripts", "wps-reliability-smoke.mjs"));
 await fs.access(path.join(root, "scripts", "compile-python.mjs"));
 await fs.access(path.join(root, "scripts", "platform-compat-smoke.mjs"));
 await fs.access(path.join(root, "scripts", "windows-compat-smoke.ps1"));
+await fs.access(path.join(root, "scripts", "powerpoint-live-smoke.mjs"));
 const officeJsManifestPath = path.join(pluginRoot, "officejs", "manifest.xml");
 await fs.access(officeJsManifestPath);
 const officeJsManifest = await fs.readFile(officeJsManifestPath, "utf8");
