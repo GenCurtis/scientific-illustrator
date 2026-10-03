@@ -28,7 +28,7 @@ const mcp = JSON.parse(await fs.readFile(mcpPath, "utf8"));
 if (entry.name !== manifest.name || manifest.name !== "scientific-illustrator") {
   throw new Error("Marketplace and manifest plugin names differ.");
 }
-if (manifest.version !== "1.5.4") throw new Error("Unexpected public release version.");
+if (manifest.version !== "1.5.4-gcSIfix-2") throw new Error("Unexpected public release version.");
 if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(manifest.version)) {
   throw new Error("Manifest version is not valid semantic versioning.");
 }
@@ -174,7 +174,8 @@ await fs.access(path.join(root, "scripts", "powerpoint-live-smoke.mjs"));
 const officeJsManifestPath = path.join(pluginRoot, "officejs", "manifest.xml");
 await fs.access(officeJsManifestPath);
 const officeJsManifest = await fs.readFile(officeJsManifestPath, "utf8");
-if (!officeJsManifest.includes(`<Version>${manifest.version}.0</Version>`)) {
+const manifestBaseVersion = manifest.version.split(/[-+]/)[0];
+if (!officeJsManifest.includes(`<Version>${manifestBaseVersion}.0</Version>`)) {
   throw new Error("Office.js and plugin versions differ.");
 }
 for (const [element, fileName, width, height] of [
@@ -242,7 +243,7 @@ for (const skill of requiredSkills) {
 async function collectFiles(directory) {
   const files = [];
   for (const item of await fs.readdir(directory, { withFileTypes: true })) {
-    if (item.name === ".git" || item.name === "node_modules" || item.name === "__pycache__") continue;
+    if (item.name === ".git" || item.name === "node_modules" || item.name === "__pycache__" || item.name === ".venv") continue;
     const fullPath = path.join(directory, item.name);
     if (item.isDirectory()) files.push(...await collectFiles(fullPath));
     else files.push(fullPath);

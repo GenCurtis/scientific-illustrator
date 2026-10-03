@@ -70,8 +70,8 @@ if (-not $PythonReady -and $PythonLaunchers.Count -gt 0) {
   & $Launcher.Command @InvocationArguments -m venv $VenvDir
   Assert-NativeSuccess "Creating the Scientific Illustrator Python environment"
   $VenvPython = Join-Path $VenvDir "Scripts\python.exe"
-  & $VenvPython -m pip install --disable-pip-version-check "python-pptx>=1.0,<2"
-  Assert-NativeSuccess "Installing python-pptx"
+  & $VenvPython -m pip install --disable-pip-version-check "python-pptx>=1.0,<2" "latex2mathml>=3.75"
+  Assert-NativeSuccess "Installing python-pptx and latex2mathml"
   $PythonReady = [pscustomobject]@{ Command = $VenvPython; Arguments = @() }
 }
 

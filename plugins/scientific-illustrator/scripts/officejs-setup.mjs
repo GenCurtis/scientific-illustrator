@@ -66,7 +66,7 @@ async function generateManifest() {
   const generatedPath = path.join(paths.state_dir, "manifest.xml");
   const tokenized = template
     .replace("https://localhost:17645/taskpane.html?token=__SCIENTIFIC_ILLUSTRATOR_TOKEN__", `https://localhost:17645/taskpane.html?token=${encodeURIComponent(token)}`)
-    .replace("<Version>1.5.4.0</Version>", `<Version>${VERSION}.0</Version>`);
+    .replace(/<Version>[^<]+<\/Version>/, `<Version>${VERSION.split(/[-+]/)[0]}.0</Version>`);
   await fs.writeFile(generatedPath, tokenized, { mode: 0o600 });
   return { token, generatedPath };
 }

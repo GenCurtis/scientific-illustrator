@@ -37,7 +37,7 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
     fi
     VENV_DIR="$INSTALL_DIR/plugins/scientific-illustrator/scripts/.venv"
     "$SYSTEM_PYTHON" -m venv "$VENV_DIR"
-    "$VENV_DIR/bin/python3" -m pip install --disable-pip-version-check "python-pptx>=1.0,<2"
+    "$VENV_DIR/bin/python3" -m pip install --disable-pip-version-check "python-pptx>=1.0,<2" "latex2mathml>=3.75"
     PYTHON_READY="$VENV_DIR/bin/python3"
   fi
   echo "Presentation OOXML backend: $PYTHON_READY"

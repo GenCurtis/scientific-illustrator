@@ -16,6 +16,7 @@ const SUPPORTED_PROTOCOLS = new Set(["2024-11-05", "2025-03-26", "2025-06-18"]);
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const BRIDGE_PATH = path.join(SCRIPT_DIR, "powerpoint-bridge.ps1");
 const OOXML_BRIDGE_PATH = path.join(SCRIPT_DIR, "powerpoint-mac-bridge.py");
+const OMML_CONVERTER_PATH = path.join(SCRIPT_DIR, "latex_to_omml.py");
 const OOXML_STATE_DIR = String(process.env.SCIENTIFIC_ILLUSTRATOR_STATE_DIR || process.env.SCIENTIFIC_ILLUSTRATOR_MAC_DIR || "").trim()
   || path.join(os.homedir(), ".codex", "scientific-illustrator", "presentations", "sessions", `${process.pid}-${Date.now().toString(36)}`);
 const MAX_BUFFER = 20 * 1024 * 1024;
@@ -25,6 +26,7 @@ const VALID_FOCUS_POLICIES = new Set(["preserve", "foreground"]);
 const SEQUENCE_OP_REQUIRED = {
   add_slide: { required: ["slide_index"] },
   add_textbox: { required: ["slide_index", "text", "left", "top", "width", "height"] },
+  add_equation: { required: ["slide_index", "latex"], anyOf: [["shape_name"], ["left", "top", "width", "height"]] },
   add_shape: { required: ["slide_index", "left", "top", "width", "height"], anyOf: [["shape"], ["shape_type_id"]] },
   add_image: { required: ["slide_index", "image_path", "left", "top", "width", "height", "raster_reason", "source_is_tightly_cropped", "atomic_raster_unit", "contains_reconstructable_content", "decomposition_note"] },
   add_line: { required: ["slide_index", "begin_x", "begin_y", "end_x", "end_y"] },
@@ -309,6 +311,25 @@ const tools = [
         line_transparency: lineStyleProperties.line_transparency,
         line_dash: lineStyleProperties.line_dash,
         ...textFrameProperties,
+        pause_after_ms: { type: "integer", minimum: 0, maximum: 10000, default: 350 },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "powerpoint_add_equation",
+    description: "Insert a native editable Office Math (OMML) equation rendered from LaTeX. This is the only correct way to place mathematical formulas or notation into a slide: never fake formulas with plain text, symbol fonts, or pictures when this tool is available. Requires the Windows COM backend (Microsoft Word provides the LaTeX-to-OMML transform) or the OOXML backend; Office.js cannot insert equations.",
+    inputSchema: {
+      type: "object",
+      required: ["slide_index", "latex"],
+      anyOf: [{ required: ["shape_name"] }, { required: ["left", "top", "width", "height"] }],
+      properties: {
+        slide_index: { type: "integer", minimum: 1 },
+        latex: { type: "string", description: "LaTeX math fragment, for example \\frac{a}{b} or E = mc^2." },
+        name: { type: "string", description: "Name for the new equation text box (only when shape_name is not given)." },
+        shape_name: { type: "string", description: "Existing text-capable shape to append the equation to the end of its text." },
+        font_size: { type: "number", minimum: 4, maximum: 200, description: "Optional equation font size in points." },
+        ...positionProperties,
         pause_after_ms: { type: "integer", minimum: 0, maximum: 10000, default: 350 },
       },
       additionalProperties: false,
@@ -686,7 +707,7 @@ const tools = [
           items: {
             type: "object",
             required: ["type"],
-            properties: { type: { type: "string", enum: ["add_slide", "add_textbox", "add_shape", "add_image", "add_line", "add_connector", "add_table", "update_table_cell", "update_table_layout", "add_chart", "duplicate_shape", "group_shapes", "ungroup_shape", "set_z_order", "align_shapes", "distribute_shapes", "update_shape", "activate_slide", "wait"] } },
+            properties: { type: { type: "string", enum: ["add_slide", "add_textbox", "add_equation", "add_shape", "add_image", "add_line", "add_connector", "add_table", "update_table_cell", "update_table_layout", "add_chart", "duplicate_shape", "group_shapes", "ungroup_shape", "set_z_order", "align_shapes", "distribute_shapes", "update_shape", "activate_slide", "wait"] } },
             additionalProperties: true,
           },
         },
@@ -842,6 +863,30 @@ async function runOoxmlBridge(action, args = {}) {
   }
 }
 
+async function convertLatexToOmml(latex, withDocx) {
+  if (!existsSync(OMML_CONVERTER_PATH)) throw new Error(`LaTeX->OMML converter is missing: ${OMML_CONVERTER_PATH}`);
+  let launcher;
+  try {
+    launcher = await ooxmlPythonExecutable();
+  } catch (error) {
+    throw new Error(`powerpoint_add_equation needs a Python environment with python-pptx and latex2mathml. ${String(error.message || error).split("\n")[0]}`);
+  }
+  const encoded = Buffer.from(latex, "utf8").toString("base64");
+  const argsList = [...launcher.args, OMML_CONVERTER_PATH, "--json-b64", encoded];
+  if (withDocx) argsList.push("--with-docx");
+  let parsed;
+  try {
+    const { stdout } = await execFileAsync(launcher.executable, argsList, { encoding: "utf8", maxBuffer: MAX_BUFFER });
+    const line = stdout.trim().split(/\r?\n/).filter(Boolean).pop();
+    parsed = JSON.parse(line);
+  } catch (error) {
+    const details = String(error.stderr || error.stdout || error.message || error).trim();
+    throw new Error(details || "LaTeX->OMML conversion failed. Re-run install.ps1/install.sh so the Python environment includes latex2mathml.");
+  }
+  if (!parsed?.ok) throw new Error(parsed?.error || "LaTeX->OMML conversion failed.");
+  return { omml: String(parsed.omml || ""), docx_b64: parsed.docx_b64 ? String(parsed.docx_b64) : null };
+}
+
 let cachedWindowsPowerPointAvailable;
 
 async function windowsPowerPointAvailable() {
@@ -857,7 +902,7 @@ async function windowsPowerPointAvailable() {
 }
 
 const MUTATING_ACTIONS = new Set([
-  "add_slide", "add_textbox", "add_shape", "add_image", "add_line", "add_connector", "add_table",
+  "add_slide", "add_textbox", "add_equation", "add_shape", "add_image", "add_line", "add_connector", "add_table",
   "update_table_cell", "update_table_layout", "add_chart", "duplicate_shape", "group_shapes", "ungroup_shape",
   "set_z_order", "align_shapes", "distribute_shapes", "update_shape", "delete_shape", "activate_slide",
 ]);
@@ -1013,6 +1058,16 @@ async function runBridge(action, args = {}, forcedBackend = null) {
     effectiveArgs.host_application = detectedHost;
   }
   if (effectiveArgs.host_application !== undefined) hostPreference = requested;
+  if (action === "add_equation") {
+    if (backend === "officejs") {
+      throw new Error("Native OMML equations require the com (Windows PowerPoint with Microsoft Word) or ooxml backend; the Office.js API cannot insert equations.");
+    }
+    const latex = typeof effectiveArgs.latex === "string" ? effectiveArgs.latex.trim() : "";
+    if (!latex) throw new Error("latex is required for powerpoint_add_equation.");
+    const converted = await convertLatexToOmml(latex, backend === "com");
+    effectiveArgs.omml_b64 = Buffer.from(converted.omml, "utf8").toString("base64");
+    if (converted.docx_b64) effectiveArgs.docx_b64 = converted.docx_b64;
+  }
   let value;
   if (backend === "officejs") value = await runOfficeJsBridge(action, effectiveArgs);
   else if (backend === "com") value = await runComBridge(action, effectiveArgs);
@@ -1056,6 +1111,7 @@ async function runSequence(args) {
   const actionMap = {
     add_slide: "add_slide",
     add_textbox: "add_textbox",
+    add_equation: "add_equation",
     add_shape: "add_shape",
     add_image: "add_image",
     add_line: "add_line",
@@ -1237,6 +1293,7 @@ async function handleTool(name, args = {}) {
     powerpoint_refresh: "refresh",
     powerpoint_add_slide: "add_slide",
     powerpoint_add_textbox: "add_textbox",
+    powerpoint_add_equation: "add_equation",
     powerpoint_add_shape: "add_shape",
     powerpoint_add_image: "add_image",
     powerpoint_add_line: "add_line",

@@ -144,6 +144,7 @@ async function readHead(filePath, length) {
 const PYTHON_VERIFIER = `
 import json
 import sys
+import zipfile
 
 from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
@@ -183,6 +184,20 @@ def counts(shapes):
 
 presentation = Presentation(sys.argv[1])
 report = {"slide_count": len(presentation.slides), "slides": []}
+with zipfile.ZipFile(sys.argv[1]) as archive:
+    equation_tags = 0
+    alternate_content_shapes = 0
+    slide_one_xml = ""
+    for name in archive.namelist():
+        if name.startswith("ppt/slides/slide") and name.endswith(".xml"):
+            raw = archive.read(name).decode("utf-8", "ignore")
+            equation_tags += raw.count("<a14:m")
+            alternate_content_shapes += raw.count("<mc:AlternateContent")
+            if name.endswith("slide1.xml"):
+                slide_one_xml = raw
+report["xml_equations"] = equation_tags
+report["xml_alternate_content_shapes"] = alternate_content_shapes
+report["xml_live_smoke_text"] = "Live smoke: text box" in slide_one_xml
 for index, slide in enumerate(presentation.slides, start=1):
     entry = counts(slide.shapes)
     entry["index"] = index
@@ -210,7 +225,7 @@ async function verifySavedPptx(filePath) {
 }
 
 const SLIDE_ONE_SHAPES = [
-  "smoke_conn", "smoke_text", "smoke_rect", "smoke_rect2", "smoke_rect3",
+  "smoke_conn", "smoke_text", "smoke_equation", "smoke_rect", "smoke_rect2", "smoke_rect3",
   "smoke_rect4", "smoke_rect5", "smoke_line", "smoke_image", "smoke_table", "smoke_chart",
 ];
 
@@ -242,12 +257,18 @@ try {
   assert.equal(created.slide_count, 0);
   assert.ok(created.presentation_name, "new presentation must report its name");
   assert.equal(created.backend_selection?.selected, "com");
+  if (startedByUs) {
+    assert.equal(created.window_state, "minimized", "preserve mode must keep the newly launched PowerPoint window in the background");
+  }
   deckName = created.presentation_name;
 
   await step("powerpoint_launch (attach to the scratch deck)", async () => {
     const value = await tool("powerpoint_launch", {});
     assert.equal(value.presentation_name, deckName);
     assert.equal(value.connected, true);
+    if (startedByUs) {
+      assert.equal(value.window_state, "minimized", "attaching must not pull our background window to the foreground");
+    }
     return value;
   });
 
@@ -290,6 +311,23 @@ try {
     });
     assert.equal(value.name, "smoke_text");
     assert.equal(value.type_name, "msoTextBox");
+    return value;
+  });
+
+  const equation = await step("powerpoint_add_equation (native OMML)", () =>
+    tool("powerpoint_add_equation", {
+      slide_index: 1, name: "smoke_equation", latex: String.raw`\frac{a}{b} = \sqrt{x_1^2 + y_1^2}`,
+      left: 60, top: 320, width: 420, height: 70, font_size: 18,
+    }));
+  assert.equal(equation.equation, true, "add_equation must report a native equation object");
+  assert.equal(equation.name, "smoke_equation");
+
+  await step("powerpoint_add_equation (append into existing text box)", async () => {
+    const value = await tool("powerpoint_add_equation", {
+      slide_index: 1, shape_name: "smoke_text", latex: String.raw`E = mc^2`,
+    });
+    assert.equal(value.equation, true);
+    assert.equal(value.name, "smoke_text");
     return value;
   });
 
@@ -384,6 +422,10 @@ try {
     assert.equal(Number(value.chart_type_id), 51);
     assert.equal(value.category_count, 3);
     assert.equal(value.series_count, 1);
+    assert.ok(
+      value.chart_data_window === "application_hidden" || value.chart_data_window === "workbook_window_hidden",
+      `chart data Excel window must stay in the background (got ${value.chart_data_window})`,
+    );
     return value;
   });
 
@@ -504,11 +546,12 @@ try {
     assert.equal(report.slide_count, 2, "the saved deck must contain 2 slides");
     const [slideOne, slideTwo] = report.slides;
     assert.equal(slideTwo.shape_count, 0, "the second slide must stay blank");
-    assert.ok(slideOne.texts.join(" | ").includes("Live smoke"), `saved text is missing: ${slideOne.texts.join(" | ")}`);
+    assert.ok(report.xml_live_smoke_text, `saved text is missing: ${slideOne.texts.join(" | ")}`);
     assert.ok(slideOne.tables >= 1, "the saved deck must contain the native table");
     assert.equal(slideOne.charts, 1, "the saved deck must contain the native chart");
     assert.equal(slideOne.pictures, 1, "the saved deck must contain the picture");
     assert.ok(slideOne.autoshapes >= 5, `expected native auto shapes in the saved deck, found ${slideOne.autoshapes}`);
+    assert.ok(report.xml_equations >= 2, `expected native OMML equations in the saved deck, found ${report.xml_equations} math zones`);
     return value;
   });
 

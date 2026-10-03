@@ -36,6 +36,7 @@ function Assert-AllowedPath {
 }
 
 $script:FocusPolicy = "preserve"
+$script:PowerPointApplicationCreated = $false
 
 function Normalize-FocusPolicy {
     param($Value)
@@ -61,6 +62,9 @@ namespace ScientificIllustrator {
         [DllImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool SetForegroundWindow(IntPtr hWnd);
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
     }
 }
 "@
@@ -79,6 +83,37 @@ function Restore-ForegroundWindow {
     if ([ScientificIllustrator.FocusWindow]::IsWindow($WindowHandle)) {
         $null = [ScientificIllustrator.FocusWindow]::SetForegroundWindow($WindowHandle)
     }
+}
+
+function Minimize-ApplicationWindow {
+    param($Application)
+    if ($null -eq $Application) { return }
+    try {
+        $Application.ActiveWindow.WindowState = 2
+        return
+    }
+    catch {}
+    try {
+        Initialize-FocusInterop
+        $windowHandle = [IntPtr][int64]$Application.HWND
+        if ($windowHandle -ne [IntPtr]::Zero -and [ScientificIllustrator.FocusWindow]::IsWindow($windowHandle)) {
+            $null = [ScientificIllustrator.FocusWindow]::ShowWindow($windowHandle, 6)
+        }
+    }
+    catch {}
+}
+
+function Get-ApplicationWindowStateName {
+    param($Application)
+    try {
+        switch ([int]$Application.ActiveWindow.WindowState) {
+            1 { return "normal" }
+            2 { return "minimized" }
+            3 { return "maximized" }
+            default { return "unknown" }
+        }
+    }
+    catch { return "unknown" }
 }
 
 function Import-OfficeInteropMetadata {
@@ -259,6 +294,7 @@ function Convert-HexToOfficeRgb {
 
 function Get-PowerPointApplication {
     param([bool]$Create)
+    $script:PowerPointApplicationCreated = $false
     try {
         return [Runtime.InteropServices.Marshal]::GetActiveObject("PowerPoint.Application")
     }
@@ -267,7 +303,9 @@ function Get-PowerPointApplication {
             return $null
         }
         try {
-            return New-Object -ComObject PowerPoint.Application
+            $application = New-Object -ComObject PowerPoint.Application
+            $script:PowerPointApplicationCreated = $true
+            return $application
         }
         catch {
             throw "Unable to start desktop PowerPoint: $($_.Exception.Message)"
@@ -668,18 +706,24 @@ function Get-PresentationSummary {
 
 function Invoke-NewPresentation {
     param($Arguments)
+    $foregroundWindow = if ($script:FocusPolicy -eq "preserve") { Get-ForegroundWindowHandle } else { [IntPtr]::Zero }
     $application = Get-PowerPointApplication $true
+    $createdApplication = [bool]$script:PowerPointApplicationCreated
     $application.Visible = -1
     $presentation = $application.Presentations.Add($true)
+    $maximize = [bool](Get-Argument $Arguments "maximize" $true)
     if ($script:FocusPolicy -eq "foreground") {
         try { $presentation.Windows.Item(1).Activate() } catch {}
+        if ($maximize) { try { $application.ActiveWindow.WindowState = 3 } catch {} }
     }
-    if ([bool](Get-Argument $Arguments "maximize" $true)) {
-        try { $application.ActiveWindow.WindowState = 3 } catch {}
+    elseif ($createdApplication) {
+        Minimize-ApplicationWindow $application
+        Restore-ForegroundWindow $foregroundWindow
     }
     $summary = Get-PresentationSummary $application $presentation
     $summary.created = $true
     $summary.connected = $true
+    $summary.window_state = Get-ApplicationWindowStateName $application
     return $summary
 }
 
@@ -711,7 +755,9 @@ function Invoke-Status {
 
 function Invoke-Launch {
     param($Arguments)
+    $foregroundWindow = if ($script:FocusPolicy -eq "preserve") { Get-ForegroundWindowHandle } else { [IntPtr]::Zero }
     $application = Get-PowerPointApplication $true
+    $createdApplication = [bool]$script:PowerPointApplicationCreated
     $visible = [bool](Get-Argument $Arguments "visible" $true)
     $application.Visible = if ($visible) { -1 } else { 0 }
     $filePath = Get-Argument $Arguments "file_path"
@@ -746,15 +792,19 @@ function Invoke-Launch {
     if ($null -eq $presentation) {
         throw "No active presentation is available and create_if_missing=false."
     }
+    $maximize = [bool](Get-Argument $Arguments "maximize" $true)
     if ($script:FocusPolicy -eq "foreground") {
         try { $presentation.Windows.Item(1).Activate() } catch {}
+        if ($maximize) { try { $application.ActiveWindow.WindowState = 3 } catch {} }
     }
-    if ([bool](Get-Argument $Arguments "maximize" $true)) {
-        try { $application.ActiveWindow.WindowState = 3 } catch {}
+    elseif ($createdApplication -and $visible) {
+        Minimize-ApplicationWindow $application
+        Restore-ForegroundWindow $foregroundWindow
     }
     $summary = Get-PresentationSummary $application $presentation
     $summary.connected = $true
     $summary.visible = $visible
+    $summary.window_state = Get-ApplicationWindowStateName $application
     return $summary
 }
 
@@ -1109,6 +1159,79 @@ function Invoke-AddTextbox {
     Set-ShapeFromArguments $shape $Arguments
     Show-Slide $application $slideIndex
     return New-ShapeSummary $shape
+}
+
+function Invoke-AddEquation {
+    param($Arguments)
+    $application = Get-PowerPointApplication $false
+    $presentation = Get-ActivePresentation $application
+    $slideIndex = [int](Get-Argument $Arguments "slide_index")
+    $slide = Get-Slide $presentation $slideIndex
+    $docxBase64 = [string](Get-Argument $Arguments "docx_b64")
+    if ([string]::IsNullOrWhiteSpace($docxBase64)) {
+        throw "The equation payload is missing its Word bridge document. Re-run powerpoint_add_equation so the server can rebuild the LaTeX-to-OMML payload."
+    }
+    $docxPath = Join-Path ([IO.Path]::GetTempPath()) ("scientific-illustrator-equation-{0}.docx" -f [Guid]::NewGuid().ToString("N"))
+    [IO.File]::WriteAllBytes($docxPath, [Convert]::FromBase64String($docxBase64))
+    $foregroundWindow = if ($script:FocusPolicy -eq "preserve") { Get-ForegroundWindowHandle } else { [IntPtr]::Zero }
+    $wordProcessIdsBefore = @(Get-Process -Name WINWORD -ErrorAction SilentlyContinue | ForEach-Object { [int]$_.Id })
+    $word = $null
+    $wordDocument = $null
+    $shape = $null
+    try {
+        $word = New-Object -ComObject Word.Application
+        try { $word.Visible = $false } catch {}
+        try { $word.DisplayAlerts = 0 } catch {}
+        $wordDocument = $word.Documents.Open($docxPath, $false, $true)
+        if ([int]$wordDocument.OMaths.Count -lt 1) {
+            throw "Word did not recognize a native equation in the generated bridge document."
+        }
+        $wordDocument.OMaths.Item(1).Range.Copy()
+        $wordDocument.Close(0)
+        $wordDocument = $null
+        $targetShapeName = Get-Argument $Arguments "shape_name"
+        $name = Get-Argument $Arguments "name"
+        if (-not [string]::IsNullOrWhiteSpace([string]$targetShapeName)) {
+            $shape = Find-Shape $slide $Arguments
+            if ($shape.HasTextFrame -ne -1) {
+                throw "Shape '$($shape.Name)' does not support text; the equation was not inserted."
+            }
+        }
+        else {
+            Assert-ShapeNameAvailable $slide ([string]$name)
+            $shape = $slide.Shapes.AddTextbox(
+                1,
+                [single](Get-Argument $Arguments "left"),
+                [single](Get-Argument $Arguments "top"),
+                [single](Get-Argument $Arguments "width"),
+                [single](Get-Argument $Arguments "height")
+            )
+            if (-not [string]::IsNullOrWhiteSpace([string]$name)) { $shape.Name = [string]$name }
+        }
+        $textRange = $shape.TextFrame.TextRange
+        $insertionPoint = $textRange.Characters($textRange.Length + 1, 0)
+        $null = $insertionPoint.Paste()
+        if (Test-Property $Arguments "font_size") {
+            try { $shape.TextFrame.TextRange.Font.Size = [single](Get-Argument $Arguments "font_size") } catch {}
+        }
+        Show-Slide $application $slideIndex
+        $summary = New-ShapeSummary $shape
+        $summary.equation = $true
+        if (Test-Property $Arguments "latex") { $summary.latex = [string](Get-Argument $Arguments "latex") }
+        return $summary
+    }
+    finally {
+        if ($null -ne $wordDocument) { try { $wordDocument.Close(0) } catch {} }
+        if ($null -ne $word) {
+            try { $null = [Runtime.InteropServices.Marshal]::ReleaseComObject($word) } catch {}
+            $word = $null
+        }
+        foreach ($wordProcess in @(Get-Process -Name WINWORD -ErrorAction SilentlyContinue | Where-Object { $wordProcessIdsBefore -notcontains [int]$_.Id })) {
+            try { Stop-Process -Id $wordProcess.Id -Force -ErrorAction SilentlyContinue } catch {}
+        }
+        if (Test-Path -LiteralPath $docxPath) { Remove-Item -LiteralPath $docxPath -Force -ErrorAction SilentlyContinue }
+        if ($script:FocusPolicy -eq "preserve") { Restore-ForegroundWindow $foregroundWindow }
+    }
 }
 
 function Resolve-AutoShapeType {
@@ -1563,12 +1686,25 @@ function Invoke-AddChart {
         if (-not [string]::IsNullOrWhiteSpace([string]$name)) { $shape.Name = [string]$name }
         $chart = $shape.Chart
         $chartData = $chart.ChartData
-        $null = $chartData.Activate()
-        for ($attempt = 0; $attempt -lt 30 -and $null -eq $workbook; $attempt += 1) {
-            try { $workbook = $chartData.Workbook } catch {}
-            if ($null -eq $workbook) { Start-Sleep -Milliseconds 200 }
+        $excelWasRunning = @(Get-Process -Name EXCEL -ErrorAction SilentlyContinue).Count -gt 0
+        try { $workbook = $chartData.Workbook } catch {}
+        if ($null -eq $workbook) {
+            $null = $chartData.Activate()
+            for ($attempt = 0; $attempt -lt 30 -and $null -eq $workbook; $attempt += 1) {
+                try { $workbook = $chartData.Workbook } catch {}
+                if ($null -eq $workbook) { Start-Sleep -Milliseconds 200 }
+            }
         }
         if ($null -eq $workbook) { throw "PowerPoint created the native chart but did not expose its embedded data workbook after 6 seconds." }
+        $chartDataWindow = "untouched"
+        if ($script:FocusPolicy -eq "preserve") {
+            if (-not $excelWasRunning) {
+                try { $workbook.Application.Visible = $false; $chartDataWindow = "application_hidden" } catch {}
+            }
+            else {
+                try { $workbook.Windows.Item(1).Visible = $false; $chartDataWindow = "workbook_window_hidden" } catch {}
+            }
+        }
         $worksheet = $workbook.Worksheets.Item(1)
         $null = $worksheet.Cells.Clear()
         $worksheet.Cells.Item(1, 1).Value2 = ""
@@ -1614,6 +1750,7 @@ function Invoke-AddChart {
         $summary.chart_type_id = $chartType
         $summary.category_count = $categories.Count
         $summary.series_count = $seriesItems.Count
+        $summary.chart_data_window = $chartDataWindow
         return $summary
     }
     catch {
@@ -1905,6 +2042,7 @@ function Invoke-Action {
         "activate_slide" { return Invoke-ActivateSlide $Arguments }
         "add_slide" { return Invoke-AddSlide $Arguments }
         "add_textbox" { return Invoke-AddTextbox $Arguments }
+        "add_equation" { return Invoke-AddEquation $Arguments }
         "add_shape" { return Invoke-AddShape $Arguments }
         "add_image" { return Invoke-AddImage $Arguments }
         "add_line" { return Invoke-AddLine $Arguments }

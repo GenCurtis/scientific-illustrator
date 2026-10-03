@@ -29,6 +29,7 @@ import tempfile
 import time
 import uuid
 
+from lxml import etree
 from pptx import Presentation
 from pptx.chart.data import CategoryChartData
 from pptx.dml.color import RGBColor
@@ -67,6 +68,9 @@ MAC_HOST_ENV = {
     "powerpoint": "POWERPOINT_PRESENTATION_PATH",
     "wps": "WPS_PRESENTATION_PATH",
 }
+
+A14_NS = "http://schemas.microsoft.com/office/drawing/2010/main"
+MATH_NS = "http://schemas.openxmlformats.org/officeDocument/2006/math"
 
 
 def _requested_host(args: dict | None = None, state: dict | None = None) -> str:
@@ -1098,6 +1102,62 @@ def action_add_textbox(args: dict) -> dict:
         )
     _save(prs, state, path)
     return _shape_result(shape, int(args["slide_index"]))
+
+
+def _equation_paragraph_element(omml_b64: str):
+    """Build the <a14:m><m:oMathPara><m:oMath> wrapper PowerPoint saves for math."""
+    raw = base64.b64decode(str(omml_b64).encode("ascii"), validate=True).decode("utf-8").strip()
+    if raw.startswith("<?xml"):
+        raw = raw.split("?>", 1)[1].strip()
+    omath = etree.fromstring(raw.encode("utf-8"))
+    if omath.tag != f"{{{MATH_NS}}}oMath":
+        raise ValueError("The equation payload is not a standalone <m:oMath> element.")
+    container = etree.Element(f"{{{A14_NS}}}m", nsmap={"a14": A14_NS})
+    paragraph_math = etree.SubElement(container, f"{{{MATH_NS}}}oMathPara", nsmap={"m": MATH_NS})
+    paragraph_math.append(omath)
+    return container
+
+
+def _append_equation(text_frame, omml_b64: str) -> None:
+    paragraphs = list(text_frame.paragraphs)
+    if len(paragraphs) == 1 and not text_frame.text.strip():
+        paragraph = paragraphs[0]
+        for child in list(paragraph._p):
+            paragraph._p.remove(child)
+    else:
+        paragraph = text_frame.add_paragraph()
+    paragraph._p.append(_equation_paragraph_element(omml_b64))
+
+
+def action_add_equation(args: dict) -> dict:
+    state, path, prs = _load()
+    index = int(args["slide_index"])
+    slide = _slide(prs, index)
+    omml_b64 = str(args.get("omml_b64") or "")
+    if not omml_b64:
+        raise ValueError(
+            "The equation payload is missing. Re-run powerpoint_add_equation so the "
+            "server can rebuild the LaTeX-to-OMML payload."
+        )
+    if args.get("shape_name") or args.get("shape_id"):
+        shape = _shape(slide, args)
+        if not getattr(shape, "has_text_frame", False):
+            raise ValueError(f"Shape '{shape.name}' does not support text; the equation was not inserted.")
+    else:
+        _assert_shape_name_available(slide, args.get("name"))
+        shape = slide.shapes.add_textbox(_pt(args["left"]), _pt(args["top"]), _pt(args["width"]), _pt(args["height"]))
+        if args.get("name"):
+            shape.name = args["name"]
+        _set_fill(shape, args.get("fill_color"), args.get("fill_transparency"))
+        _set_line(shape, args)
+    _apply_text_frame(shape.text_frame, args)
+    _append_equation(shape.text_frame, omml_b64)
+    _save(prs, state, path)
+    result = _shape_result(shape, index)
+    result["equation"] = True
+    if args.get("latex"):
+        result["latex"] = args["latex"]
+    return result
 
 
 def _normalize_enum_name(value: object, prefixes: tuple[str, ...] = ()) -> str:
@@ -2178,6 +2238,7 @@ ACTIONS = {
     "refresh": action_refresh,
     "add_slide": action_add_slide,
     "add_textbox": action_add_textbox,
+    "add_equation": action_add_equation,
     "add_shape": action_add_shape,
     "add_image": action_add_image,
     "add_line": action_add_line,

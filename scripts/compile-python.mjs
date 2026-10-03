@@ -6,7 +6,9 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const bridge = path.join(root, "plugins", "scientific-illustrator", "scripts", "powerpoint-mac-bridge.py");
+const pythonFiles = ["powerpoint-mac-bridge.py", "latex_to_omml.py"].map((name) =>
+  path.join(root, "plugins", "scientific-illustrator", "scripts", name),
+);
 
 const candidates = [
   { executable: process.env.SCIENTIFIC_ILLUSTRATOR_PYTHON, args: [] },
@@ -30,15 +32,15 @@ const candidates = [
 const failures = [];
 for (const candidate of candidates) {
   try {
-    await execFileAsync(candidate.executable, [...candidate.args, "-m", "py_compile", bridge], {
+    await execFileAsync(candidate.executable, [...candidate.args, "-m", "py_compile", ...pythonFiles], {
       cwd: root,
       maxBuffer: 1024 * 1024,
     });
-    console.log(`Python bridge syntax passed with ${candidate.executable}${candidate.args.length ? ` ${candidate.args.join(" ")}` : ""}.`);
+    console.log(`Python bridge and OMML converter syntax passed with ${candidate.executable}${candidate.args.length ? ` ${candidate.args.join(" ")}` : ""}.`);
     process.exit(0);
   } catch (error) {
     failures.push(`${candidate.executable}: ${String(error.message || error).split("\n")[0]}`);
   }
 }
 
-throw new Error(`No usable Python 3 runtime could compile the OOXML bridge. Checked: ${failures.join("; ")}`);
+throw new Error(`No usable Python 3 runtime could compile the PowerPoint Python scripts. Checked: ${failures.join("; ")}`);

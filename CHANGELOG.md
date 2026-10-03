@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.5.4-gcSIfix-2 — 2026-10-03
+
+- Fork version suffix: plugin, package, and README now report `1.5.4-gcSIfix-2`; the Office.js manifest keeps the numeric `1.5.4.0`, and the repository validator checks the suffix against its numeric base.
+- Removed every legacy author attribution from agent-facing skills, Office add-in metadata, and task-pane assets; the fork now identifies as GenCurtis and guards the nine agent-visible files against attribution regressions.
+- Fixed Windows COM PDF export (now `SaveCopyAs` with the PDF format) and the polluted `[true, {...}]` chart response shape.
+- Added the 42-step Windows PowerPoint live matrix (`npm run test:live`): real COM mutations, PNG/PPTX/PDF exports, python-pptx round-trip, native OMML checks, and background-window assertions.
+- Background windows: under the default preserve policy, a newly launched PowerPoint window opens minimized and immediately returns focus; attaching no longer maximizes the window; chart-data Excel windows are hidden (application level when Excel was not running, workbook window level otherwise).
+- Native OMML equations: new `powerpoint_add_equation` tool converts LaTeX through Microsoft Word's MML2OMML.XSL. The COM backend transfers the equation through a hidden Word document and the clipboard; the OOXML backend injects `<a14:m>` directly. Both routes keep equations editable and vector-crisp, verified by the live suite and a CI-safe OOXML equation smoke test.
+
 ## 1.5.4 — 2026-08-08
 
 - Updated the author, developer, Office add-in provider, task-pane, license, README, and successful-delivery attribution to `一个地质博士`.

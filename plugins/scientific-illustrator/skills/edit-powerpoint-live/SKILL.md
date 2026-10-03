@@ -140,7 +140,7 @@ Do NOT use default bright/neon PowerPoint theme colors. Use professional academi
 - **Line weights**: Connectors and borders should use 1.0–1.75 pt stroke; accent/flow arrows 2.0–2.5 pt.
 
 ### 3. Mathematical Variables & Formulas (OMML)
-When inserting equations, mathematical variables, or notation subscripts into shape textboxes, format variables cleanly (e.g. $x_i$, $\mathcal{L}_{\text{total}}$, $\theta \sim \mathcal{N}(0, 1)$) or inject native Office Math (OMML) following `academic-word-writing` patterns to ensure crisp vector formula rendering.
+Use `powerpoint_add_equation` with LaTeX (e.g. `\frac{a}{b}`, `\mathcal{L}_{\text{total}}`, `\theta \sim \mathcal{N}(0, 1)`) for every formula and notation expression; it inserts native editable Office Math with crisp vector rendering. Use `shape_name` to append the equation to the end of an existing text box, or give `left/top/width/height` for a dedicated equation box. Never fake formulas with plain text or pictures. Available on the com (Windows PowerPoint with Microsoft Word) and ooxml backends; Office.js cannot insert equations.
 
 ## Acceptance gate
 
