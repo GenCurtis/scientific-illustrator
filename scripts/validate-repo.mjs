@@ -33,10 +33,10 @@ if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(manifest.ve
   throw new Error("Manifest version is not valid semantic versioning.");
 }
 if (rootPackage.version !== manifest.version) throw new Error("Package and plugin versions differ.");
-if (manifest.repository !== "https://github.com/icebird1998/scientific-illustrator") {
+if (manifest.repository !== "https://github.com/GenCurtis/scientific-illustrator") {
   throw new Error("Manifest repository URL is incorrect.");
 }
-if (manifest.author?.name !== "一个地质博士" || manifest.interface?.developerName !== "一个地质博士") {
+if (manifest.author?.name !== "GenCurtis" || manifest.interface?.developerName !== "GenCurtis") {
   throw new Error("Developer attribution is missing.");
 }
 for (const relativePath of [
@@ -52,6 +52,22 @@ for (const relativePath of [
   const source = await fs.readFile(path.join(root, relativePath), "utf8");
   if (/\u8fdb\u51fb\u7684\u571f\u535a|\u79d1\u7814\s*up\s*\u4e3b/i.test(source)) {
     throw new Error(`Legacy author attribution remains in ${relativePath}.`);
+  }
+}
+for (const relativePath of [
+  "plugins/scientific-illustrator/.codex-plugin/plugin.json",
+  "plugins/scientific-illustrator/officejs/manifest.xml",
+  "plugins/scientific-illustrator/officejs/taskpane.html",
+  "plugins/scientific-illustrator/skills/audit-scientific-figure/SKILL.md",
+  "plugins/scientific-illustrator/skills/correct-scientific-figure/SKILL.md",
+  "plugins/scientific-illustrator/skills/design-scientific-figure/SKILL.md",
+  "plugins/scientific-illustrator/skills/edit-powerpoint-live/SKILL.md",
+  "plugins/scientific-illustrator/skills/recreate-scientific-figure/SKILL.md",
+  "plugins/scientific-illustrator/skills/recreate-scientific-figure-in-drawio/SKILL.md",
+]) {
+  const source = await fs.readFile(path.join(root, relativePath), "utf8");
+  if (/\u611f\u8c22\u4f7f\u7528|\u4e00\u4e2a\u5730\u8d28\u535a\u58eb|icebird1998/i.test(source)) {
+    throw new Error(`Author attribution content remains in ${relativePath}.`);
   }
 }
 if (!Array.isArray(manifest.interface?.defaultPrompt) || manifest.interface.defaultPrompt.length > 3) {

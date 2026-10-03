@@ -7,7 +7,7 @@ OpenCode natively loads Agent Skills from `.opencode/skills/`, `.claude/skills/`
 1. Clone this repository anywhere on your machine.
 
    ```bash
-   git clone https://github.com/icebird1998/scientific-illustrator.git ~/scientific-illustrator
+   git clone https://github.com/GenCurtis/scientific-illustrator.git ~/scientific-illustrator
    ```
 
 2. Register the plugin's MCP servers in your OpenCode config. OpenCode reads `opencode.json` at the project root, `~/.config/opencode/opencode.json` or `~/.config/opencode/opencode.jsonc` (global). See the example in this repository's `opencode.json.example` for the full shape.

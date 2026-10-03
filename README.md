@@ -2,11 +2,11 @@
 
 把参考图上传给 Codex，插件会在 **Microsoft PowerPoint、WPS 演示或 draw.io** 中尽量用可编辑对象重新绘制，并自动检查和修正。
 
-**作者：一个地质博士**
+**作者：GenCurtis**
 
-GitHub：[@icebird1998](https://github.com/icebird1998)
+GitHub：[@GenCurtis](https://github.com/GenCurtis)
 
-当前版本：[v1.5.4](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.5.4)
+当前版本：[v1.5.4](https://github.com/GenCurtis/scientific-illustrator/tags)
 
 本项目是 [drawio-scientific-illustrator](https://github.com/icebird1998/drawio-scientific-illustrator) 的升级整合版，后续功能只在本项目更新。
 
@@ -17,7 +17,7 @@ GitHub：[@icebird1998](https://github.com/icebird1998)
 把下面这段话完整发送给 Codex：
 
 ~~~text
-请安装 https://github.com/icebird1998/scientific-illustrator。
+请安装 https://github.com/GenCurtis/scientific-illustrator。
 把仓库根目录注册为 Codex Marketplace，然后安装
 scientific-illustrator@scientific-illustrator-tools。完成后提醒我重启 Codex。
 ~~~
@@ -107,19 +107,19 @@ scientific-illustrator@scientific-illustrator-tools。完成后提醒我重启 C
 ### Windows
 
 ~~~powershell
-$p="$env:TEMP\scientific-illustrator-install.ps1"; Invoke-WebRequest https://raw.githubusercontent.com/icebird1998/scientific-illustrator/main/install.ps1 -OutFile $p; powershell -ExecutionPolicy Bypass -File $p
+$p="$env:TEMP\scientific-illustrator-install.ps1"; Invoke-WebRequest https://raw.githubusercontent.com/GenCurtis/scientific-illustrator/main/install.ps1 -OutFile $p; powershell -ExecutionPolicy Bypass -File $p
 ~~~
 
 ### macOS / Linux
 
 ~~~bash
-curl -fsSL https://raw.githubusercontent.com/icebird1998/scientific-illustrator/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/GenCurtis/scientific-illustrator/main/install.sh | bash
 ~~~
 
 ### 手动安装
 
 ~~~bash
-git clone https://github.com/icebird1998/scientific-illustrator.git
+git clone https://github.com/GenCurtis/scientific-illustrator.git
 cd scientific-illustrator
 codex plugin marketplace add "$(pwd)"
 codex plugin add scientific-illustrator@scientific-illustrator-tools
@@ -180,5 +180,3 @@ git checkout v1.5.0
 ## 许可证与隐私
 
 [MIT License](LICENSE) · [隐私说明](PRIVACY.md)
-
-感谢使用 **Scientific Illustrator**。制作者：**一个地质博士**。

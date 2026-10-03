@@ -83,16 +83,9 @@ button {
   cursor: pointer;
 }
 
-footer {
-  margin-top: 22px;
-  color: #7a7d81;
-  font-size: 12px;
-  text-align: center;
-}
-
 @media (prefers-color-scheme: dark) {
   body { background: #202124; color: #f1f3f4; }
   .status-card { background: #2c2d30; border-color: #494b50; }
-  header p, .status-card p, .note, dt, footer { color: #bdc1c6; }
+  header p, .status-card p, .note, dt { color: #bdc1c6; }
   dl div { border-color: #494b50; }
 }

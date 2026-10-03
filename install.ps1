@@ -3,7 +3,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$Repository = "https://github.com/icebird1998/scientific-illustrator.git"
+$Repository = "https://github.com/GenCurtis/scientific-illustrator.git"
 $Plugin = "scientific-illustrator@scientific-illustrator-tools"
 
 function Assert-NativeSuccess {

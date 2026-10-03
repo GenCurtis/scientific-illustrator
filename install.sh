@@ -2,7 +2,7 @@
 set -euo pipefail
 
 INSTALL_DIR="${1:-$HOME/.codex/marketplaces/scientific-illustrator}"
-REPOSITORY="https://github.com/icebird1998/scientific-illustrator.git"
+REPOSITORY="https://github.com/GenCurtis/scientific-illustrator.git"
 PLUGIN="scientific-illustrator@scientific-illustrator-tools"
 
 command -v git >/dev/null || { echo "Git is required." >&2; exit 1; }
