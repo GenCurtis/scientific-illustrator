@@ -11,5 +11,8 @@ __pycache__/
 *.drawio.png
 *.drawio.svg
 
+# Findings ledgers are derived runtime state (attribution), never committed.
+**/*.si-findings.json
+
 # Local planning documents (not published)
 docs/planning/

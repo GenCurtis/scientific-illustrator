@@ -130,14 +130,42 @@ function sniffImageMime(buffer, extension) {
   return null;
 }
 
+let atomicWriteSequence = 0;
+
+const atomicWriteRetryableCodes = new Set(["EPERM", "EACCES", "EBUSY"]);
+
+// Windows can throw a sharing violation when two writers replace one target
+// at once even after temp names are unique. Real callers serialize their
+// stateful writes; this retry only absorbs the residual OS-level race so a
+// concurrent replacement does not surface as a spurious failure.
+async function renameWithRetry(tmp, target) {
+  let lastError;
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    try {
+      await fs.rename(tmp, target);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (!atomicWriteRetryableCodes.has(error?.code)) throw error;
+      if (attempt < 5) await new Promise((resolve) => setTimeout(resolve, 10 * (attempt + 1)));
+    }
+  }
+  throw lastError;
+}
+
 async function atomicWrite(target, data, mode) {
   const dir = path.dirname(target);
   const parent = await assertAllowedRealPath(dir);
   await fs.mkdir(parent, { recursive: true });
-  const tmp = path.join(parent, `.${path.basename(target)}.${process.pid}.${Date.now().toString(36)}.tmp`);
+  // Sequence + timestamp keep concurrent writers in one process from colliding
+  // on the same temp name; renameWithRetry absorbs the remaining rename race.
+  const tmp = path.join(
+    parent,
+    `.${path.basename(target)}.${process.pid}.${(++atomicWriteSequence).toString(36)}.${Date.now().toString(36)}.tmp`
+  );
   await fs.writeFile(tmp, data, mode);
   try {
-    await fs.rename(tmp, path.join(parent, path.basename(target)));
+    await renameWithRetry(tmp, path.join(parent, path.basename(target)));
   } catch (error) {
     // A failed rename must not leave the temp file behind (e.g. read-only target).
     await fs.rm(tmp, { force: true }).catch(() => {});

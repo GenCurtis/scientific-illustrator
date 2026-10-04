@@ -1097,9 +1097,18 @@ function Invoke-AuditFigure {
     $hardFailures = @($findings | Where-Object { $_.severity -eq "hard" })
     $warnings = @($findings | Where-Object { $_.severity -eq "warning" })
     $findingsTruncated = $findings.Count -ge $maxFindings
+    $presentationPath = $null
+    try {
+        if (-not [string]::IsNullOrWhiteSpace([string]$presentation.Path)) {
+            $presentationPath = [string]$presentation.FullName
+        }
+    } catch {
+        $presentationPath = $null
+    }
     return [ordered]@{
         backend = "powerpoint"
         slide_index = $slideIndex
+        presentation_path = $presentationPath
         slide_size = [ordered]@{ width = $slideWidth; height = $slideHeight }
         object_counts = [ordered]@{
             total = [int]$slide.Shapes.Count

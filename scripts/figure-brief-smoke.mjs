@@ -225,6 +225,19 @@ try {
       const stored = JSON.parse(await fs.readFile(target, "utf8"));
       assert.notEqual(stored.created_at, "1999-01-01T00:00:00.000Z");
     });
+    await check("provided created_at on creation is ignored and warned", async () => {
+      const dir = path.join(tempRoot, "created-at-create");
+      await fs.mkdir(dir, { recursive: true });
+      const freshArtifact = path.join(dir, "fig8.pptx");
+      const result = await writeFigureBrief({
+        artifactPath: freshArtifact,
+        document: validBrief({ figure_id: "fig8", created_at: "1999-01-01T00:00:00.000Z" }),
+      });
+      assert.equal(result.created, true);
+      assert.ok(result.schema_warnings.some((w) => /created_at is tool-managed/.test(w)));
+      const stored = JSON.parse(await fs.readFile(path.join(dir, "fig8.si-brief.json"), "utf8"));
+      assert.notEqual(stored.created_at, "1999-01-01T00:00:00.000Z");
+    });
     await check("creation with a wrong expected_revision is rejected", async () => {
       const fresh = path.join(tempRoot, "fresh");
       await fs.mkdir(fresh, { recursive: true });

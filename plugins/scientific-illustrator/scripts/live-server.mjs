@@ -7,6 +7,7 @@ import path from "node:path";
 import os from "node:os";
 import net from "node:net";
 import { drawioInstallHint, resolveDrawioExecutable } from "./drawio-path.mjs";
+import { annotateAuditResult } from "./findings-ledger.mjs";
 import { VERSION as SERVER_VERSION, MAX_IMAGE_BYTES, assertAllowedPath, assertAllowedRealPath, sniffImageMime, atomicWrite } from "./guardrails.mjs";
 
 const SERVER_NAME = "drawio-live";
@@ -44,6 +45,7 @@ const live = {
   port: DEFAULT_PORT,
   target: null,
   stepDelayMs: 350,
+  lastFilePath: null,
 };
 
 const pointSchema = {
@@ -418,10 +420,11 @@ const tools = [
   },
   {
     name: "drawio_live_audit_figure",
-    description: "Run a read-only deterministic geometry, connector, text-fit, repeated-layout, and raster editability audit on the visible draw.io model. Returns named hard failures and correction-oriented findings.",
+    description: "Run a read-only deterministic geometry, connector, text-fit, repeated-layout, and raster editability audit on the visible draw.io model. Returns named hard failures and correction-oriented findings with stable finding ids and a new/persistent/resolved attribution status from the findings ledger.",
     inputSchema: {
       type: "object",
       properties: {
+        artifact_path: { type: "string", description: "Absolute path of the .drawio artifact used to locate the findings ledger. Optional; defaults to the file this server launched." },
         alignment_tolerance: { type: "number", minimum: 0.05, maximum: 100, default: 1 },
         endpoint_clearance: { type: "number", minimum: 0, maximum: 100, default: 2 },
         text_overflow_tolerance: { type: "number", minimum: 0, maximum: 100, default: 2 },
@@ -2005,7 +2008,11 @@ async function launchLive(args) {
       `--user-data-dir=${profileDir}`,
       "--disable-features=CalculateNativeWinOcclusion",
     ];
-    if (args.file_path) argv.push(await assertAllowedRealPath(args.file_path));
+    if (args.file_path) {
+      const filePath = await assertAllowedRealPath(args.file_path);
+      argv.push(filePath);
+      live.lastFilePath = filePath;
+    }
     live.process = spawn(DRAWIO.executable, argv, { detached: false, stdio: "ignore", windowsHide: false });
     await new Promise((resolve, reject) => {
       live.process.once("spawn", resolve);
@@ -2157,8 +2164,14 @@ async function handleTool(name, args = {}) {
       `);
       return { value };
     }
-    case "drawio_live_audit_figure":
-      return { value: await auditFigure(args) };
+    case "drawio_live_audit_figure": {
+      const value = await auditFigure(args);
+      await annotateAuditResult(value, {
+        artifactPath: args.artifact_path || live.lastFilePath || null,
+        scopeAnchor: "page",
+      });
+      return { value };
+    }
     case "drawio_live_save_snapshot": {
       const output = await assertAllowedRealPath(args.output_path);
       if (path.extname(output).toLowerCase() !== ".drawio") throw new Error("output_path must end with .drawio");

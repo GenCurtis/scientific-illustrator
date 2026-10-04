@@ -190,15 +190,22 @@ function normalizePathArgument(value, name) {
   return trimmed;
 }
 
-// Three-level resolution:
-//   1. explicit brief_path (highest priority);
-//   2. nearest ancestor .scientific-illustrator/ -> figures/<slug>.brief.json;
-//   3. sibling <stem>.si-brief.json next to the artifact.
+// Three-level resolution shared by figure documents (brief, findings ledger):
+//   1. explicit path (highest priority);
+//   2. nearest ancestor .scientific-illustrator/ -> figures/<stem>.<kind>.json;
+//   3. sibling file next to the artifact.
 // The tool never creates .scientific-illustrator/ itself; the user opts into
 // the project-level layout by creating that directory once.
-export async function resolveBriefTarget({ artifactPath, briefPath } = {}) {
-  if (briefPath !== undefined && briefPath !== null) {
-    const target = assertAllowedPath(normalizePathArgument(briefPath, "brief_path"));
+async function resolveFigureDocumentTarget({
+  artifactPath,
+  explicitPath,
+  explicitParamName,
+  subject,
+  projectFileName,
+  siblingFileName,
+}) {
+  if (explicitPath !== undefined && explicitPath !== null) {
+    const target = assertAllowedPath(normalizePathArgument(explicitPath, explicitParamName));
     const artifactDirectory =
       artifactPath !== undefined && artifactPath !== null
         ? path.dirname(assertAllowedPath(normalizePathArgument(artifactPath, "artifact_path")))
@@ -206,7 +213,7 @@ export async function resolveBriefTarget({ artifactPath, briefPath } = {}) {
     return { target, resolutionBasis: "explicit", artifactDirectory };
   }
   if (artifactPath === undefined || artifactPath === null) {
-    throw new Error("figure_brief requires artifact_path or brief_path.");
+    throw new Error(`${subject} requires artifact_path or ${explicitParamName}.`);
   }
   const artifact = assertAllowedPath(normalizePathArgument(artifactPath, "artifact_path"));
   const artifactDirectory = path.dirname(artifact);
@@ -214,16 +221,41 @@ export async function resolveBriefTarget({ artifactPath, briefPath } = {}) {
   const projectDirectory = await findProjectDirectory(artifactDirectory, allowedRoot());
   if (projectDirectory) {
     return {
-      target: path.join(projectDirectory, ".scientific-illustrator", "figures", `${stem}.brief.json`),
+      target: path.join(projectDirectory, ".scientific-illustrator", "figures", projectFileName(stem)),
       resolutionBasis: "project",
       artifactDirectory,
     };
   }
   return {
-    target: path.join(artifactDirectory, `${stem}.si-brief.json`),
+    target: path.join(artifactDirectory, siblingFileName(stem)),
     resolutionBasis: "sibling",
     artifactDirectory,
   };
+}
+
+export async function resolveBriefTarget({ artifactPath, briefPath } = {}) {
+  return resolveFigureDocumentTarget({
+    artifactPath,
+    explicitPath: briefPath,
+    explicitParamName: "brief_path",
+    subject: "figure_brief",
+    projectFileName: (stem) => `${stem}.brief.json`,
+    siblingFileName: (stem) => `${stem}.si-brief.json`,
+  });
+}
+
+// Findings ledger placement follows the same three levels: an explicit
+// findings_path wins, then .scientific-illustrator/figures/<stem>.si-findings.json,
+// then a sibling <stem>.si-findings.json next to the artifact.
+export async function resolveFindingsTarget({ artifactPath, findingsPath } = {}) {
+  return resolveFigureDocumentTarget({
+    artifactPath,
+    explicitPath: findingsPath,
+    explicitParamName: "findings_path",
+    subject: "findings_ledger",
+    projectFileName: (stem) => `${stem}.si-findings.json`,
+    siblingFileName: (stem) => `${stem}.si-findings.json`,
+  });
 }
 
 // Reads and validates the resolved brief. A missing brief is a normal state

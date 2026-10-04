@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { getOfficeJsBridge } from "./officejs-bridge.mjs";
 import { planReconstruction, reconstructionPlanTool } from "./adaptive-planner.mjs";
+import { annotateAuditResult } from "./findings-ledger.mjs";
 import { VERSION as SERVER_VERSION, assertAllowedRealPath, atomicWrite } from "./guardrails.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -313,12 +314,13 @@ const tools = [
   },
   {
     name: "powerpoint_audit_figure",
-    description: "Run a deterministic geometry, connector, text-fit, repeated-layout, and raster editability audit on one slide. Returns named hard failures and correction-oriented findings; it does not modify the presentation. The result carries a `discipline` block so repeated unchanged audits and review debt are measurable.",
+    description: "Run a deterministic geometry, connector, text-fit, repeated-layout, and raster editability audit on one slide. Returns named hard failures and correction-oriented findings with stable finding ids and a new/persistent/resolved attribution status from the findings ledger; it does not modify the presentation. The result carries a `discipline` block so repeated unchanged audits and review debt are measurable.",
     inputSchema: {
       type: "object",
       required: ["slide_index"],
       properties: {
         slide_index: { type: "integer", minimum: 1 },
+        artifact_path: { type: "string", description: "Absolute path of the presentation artifact used to locate the findings ledger (and the future brief). Optional; defaults to the file reported by the active backend when it exposes one, so Office.js sessions should pass it explicitly." },
         alignment_tolerance: { type: "number", minimum: 0.05, maximum: 50, default: 0.75 },
         endpoint_clearance: { type: "number", minimum: 0, maximum: 100, default: 1.5 },
         text_overflow_tolerance: { type: "number", minimum: 0, maximum: 50, default: 1.5 },
@@ -1187,6 +1189,16 @@ async function runBridge(action, args = {}, forcedBackend = null) {
     if (!insideSequence && MUTATING_ACTIONS.has(action)) {
       const reminder = reviewReminder();
       if (reminder) value.review_reminder = reminder;
+    }
+    if (action === "audit_figure") {
+      const explicitArtifact =
+        typeof effectiveArgs.artifact_path === "string" && effectiveArgs.artifact_path.trim() ? effectiveArgs.artifact_path : null;
+      const artifactPath = explicitArtifact || value.source_path || value.presentation_path || value.path || null;
+      await annotateAuditResult(value, {
+        artifactPath,
+        scopeAnchor: `slide:${Number(value.slide_index ?? effectiveArgs.slide_index ?? 1)}`,
+        revision: disciplineSnapshot().revision,
+      });
     }
     if (action === "status" || action === "capabilities") {
       value.officejs_live = await officeJsStatus(0);

@@ -2042,6 +2042,7 @@ def action_audit_figure(args: dict) -> dict:
     return {
         "slide_index": index,
         "path": str(path),
+        "source_path": state.get("source_path"),
         "backend": "python-pptx-ooxml+application-reload",
         "host_application": state.get("host_application", "auto"),
         "shape_count": len(slide.shapes),
