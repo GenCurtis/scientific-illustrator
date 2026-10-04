@@ -227,6 +227,7 @@ async function verifySavedPptx(filePath) {
 const SLIDE_ONE_SHAPES = [
   "smoke_conn", "smoke_text", "smoke_equation", "smoke_rect", "smoke_rect2", "smoke_rect3",
   "smoke_rect4", "smoke_rect5", "smoke_line", "smoke_image", "smoke_table", "smoke_chart",
+  "batch_a", "batch_b", "batch_link", "batch_c",
 ];
 
 let deckName = "";
@@ -493,6 +494,36 @@ try {
     assert.equal(value.deleted, true);
     assert.equal(value.shape?.name, "smoke_text_copy");
     return value;
+  });
+
+  await step("powerpoint_draw_sequence (bounded COM batch)", async () => {
+    const value = await tool("powerpoint_draw_sequence", {
+      operations: [
+        { type: "add_shape", slide_index: 1, name: "batch_a", shape: "rectangle", left: 640, top: 60, width: 90, height: 40, fill_color: "D9EAD3" },
+        { type: "add_shape", slide_index: 1, name: "batch_b", shape: "rounded_rectangle", left: 780, top: 60, width: 90, height: 40 },
+        { type: "add_connector", slide_index: 1, name: "batch_link", source_name: "batch_a", target_name: "batch_b" },
+        { type: "update_shape", slide_index: 1, shape_name: "batch_a", text: "batch" },
+      ],
+      pacing_mode: "fast",
+    });
+    assert.equal(value.object_operations_applied, 4);
+    assert.ok(Array.isArray(value.batches) && value.batches.length >= 1, "COM sequences must report a bounded batch");
+    assert.ok(value.batches[0].operations_applied >= 1);
+    return value;
+  });
+
+  await step("powerpoint_draw_sequence keeps the committed prefix on partial failure", async () => {
+    await expectToolError("powerpoint_draw_sequence", {
+      operations: [
+        { type: "add_shape", slide_index: 1, name: "batch_c", shape: "rectangle", left: 640, top: 130, width: 90, height: 40 },
+        { type: "add_shape", slide_index: 1, name: "batch_c", shape: "rectangle", left: 640, top: 130, width: 90, height: 40 },
+      ],
+      pacing_mode: "fast",
+    }, /failed_operation_index/);
+    const inspected = await tool("powerpoint_inspect", { include_text: false, max_shapes_per_slide: 1000 });
+    const names = new Set(inspected.slides[0].shapes.map((shape) => shape.shape_name ?? shape.name));
+    assert.ok(names.has("batch_c"), "the committed prefix must remain after a partial batch failure");
+    return inspected;
   });
 
   await step("powerpoint_inspect", async () => {

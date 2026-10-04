@@ -37,6 +37,7 @@ function Assert-AllowedPath {
 
 $script:FocusPolicy = "preserve"
 $script:PowerPointApplicationCreated = $false
+$script:CachedPowerPointApplication = $null
 
 function Normalize-FocusPolicy {
     param($Value)
@@ -294,9 +295,12 @@ function Convert-HexToOfficeRgb {
 
 function Get-PowerPointApplication {
     param([bool]$Create)
+    if ($null -ne $script:CachedPowerPointApplication) { return $script:CachedPowerPointApplication }
     $script:PowerPointApplicationCreated = $false
     try {
-        return [Runtime.InteropServices.Marshal]::GetActiveObject("PowerPoint.Application")
+        $application = [Runtime.InteropServices.Marshal]::GetActiveObject("PowerPoint.Application")
+        $script:CachedPowerPointApplication = $application
+        return $application
     }
     catch {
         if (-not $Create) {
@@ -305,6 +309,7 @@ function Get-PowerPointApplication {
         try {
             $application = New-Object -ComObject PowerPoint.Application
             $script:PowerPointApplicationCreated = $true
+            $script:CachedPowerPointApplication = $application
             return $application
         }
         catch {
@@ -1234,6 +1239,54 @@ function Invoke-AddEquation {
     }
 }
 
+function Invoke-DrawBatch {
+    param($Arguments)
+    $operations = @(Get-Argument $Arguments "operations")
+    if ($operations.Count -lt 1 -or $operations.Count -gt 100) {
+        throw "draw_batch requires 1..100 operations."
+    }
+    $allowed = @(
+        "add_slide", "add_textbox", "add_shape", "add_image", "add_line", "add_connector",
+        "add_table", "update_table_cell", "update_table_layout", "add_chart", "duplicate_shape",
+        "group_shapes", "ungroup_shape", "set_z_order", "align_shapes", "distribute_shapes", "update_shape"
+    )
+    for ($index = 0; $index -lt $operations.Count; $index += 1) {
+        $operationType = [string](Get-Argument $operations[$index] "type")
+        if ($allowed -notcontains $operationType) {
+            throw "Unsupported batch operation at index ${index}: $operationType"
+        }
+    }
+    $stopwatch = [Diagnostics.Stopwatch]::StartNew()
+    $results = @()
+    $failure = $null
+    for ($index = 0; $index -lt $operations.Count; $index += 1) {
+        $operation = $operations[$index]
+        $operationType = [string](Get-Argument $operation "type")
+        try {
+            $result = Invoke-Action $operationType $operation
+            $results += [ordered]@{ index = $index; type = $operationType; result = $result }
+        }
+        catch {
+            $failure = [ordered]@{
+                index = $index
+                type = $operationType
+                error = $_.Exception.Message
+                failed_operation_may_have_mutated = $true
+            }
+            break
+        }
+    }
+    $stopwatch.Stop()
+    return [ordered]@{
+        operations_applied = $results.Count
+        results = $results
+        failure = $failure
+        failed_operation_may_have_mutated = $null -ne $failure
+        failed_operation_rolled_back = $false
+        elapsed_ms = [int]$stopwatch.ElapsedMilliseconds
+    }
+}
+
 function Resolve-AutoShapeType {
     param($Arguments)
     if (Test-Property $Arguments "shape_type_id") {
@@ -2043,6 +2096,7 @@ function Invoke-Action {
         "add_slide" { return Invoke-AddSlide $Arguments }
         "add_textbox" { return Invoke-AddTextbox $Arguments }
         "add_equation" { return Invoke-AddEquation $Arguments }
+        "draw_batch" { return Invoke-DrawBatch $Arguments }
         "add_shape" { return Invoke-AddShape $Arguments }
         "add_image" { return Invoke-AddImage $Arguments }
         "add_line" { return Invoke-AddLine $Arguments }

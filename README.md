@@ -6,7 +6,7 @@
 
 GitHub：[@GenCurtis](https://github.com/GenCurtis)
 
-当前版本：[v1.5.4-gcSIfix-2](https://github.com/GenCurtis/scientific-illustrator/tags)
+当前版本：[v1.5.4-gcSIfix-3](https://github.com/GenCurtis/scientific-illustrator/tags)
 
 本项目是 [drawio-scientific-illustrator](https://github.com/icebird1998/drawio-scientific-illustrator) 的升级整合版，后续功能只在本项目更新。
 
@@ -42,7 +42,7 @@ scientific-illustrator@scientific-illustrator-tools。完成后提醒我重启 C
 | WPS 演示 | 支持 | 支持 | 绘制为可编辑 PPTX 工作副本；默认按检查点后台刷新，不会持续抢占窗口 |
 | draw.io Desktop | 支持 | 支持 | 直接控制 draw.io 画布，保存可编辑 .drawio 并导出预览图 |
 
-默认情况下，PowerPoint 和 WPS 会在后台绘制，你可以继续使用电脑。新启动的 PowerPoint 窗口会在后台最小化打开，图表数据用的 Excel 窗口也会隐藏，不再弹到前台。WPS 使用可编辑 PPTX 工作副本，不会假装已经连接任意未保存的当前窗口；macOS 会验证文件是否真的由 WPS 打开，Windows 无法验证时会明确显示“未知”。draw.io 不认识的图形名会直接报错，不会悄悄退化成矩形。显微照片、复杂纹理等确实无法用形状还原的内容，只会把最小必要区域作为图片插入，其余文字、箭头和边框仍保持可编辑。数学公式请用 `powerpoint_add_equation` 以 LaTeX 插入为原生可编辑的 OMML 矢量公式，不要用纯文本或图片代替（Windows 实时绘制需要安装 Microsoft Word 完成公式转换）。
+默认情况下，PowerPoint 和 WPS 会在后台绘制，你可以继续使用电脑。新启动的 PowerPoint 窗口会在后台最小化打开，图表数据用的 Excel 窗口也会隐藏，不再弹到前台。绘制默认使用零人工等待的有界批量：Windows COM 与 OOXML 都是「一批一进程」，OOXML 每批只读写一次文件；简单重复对象批量复用，复杂模块才定点检查修正。WPS 使用可编辑 PPTX 工作副本，不会假装已经连接任意未保存的当前窗口；macOS 会验证文件是否真的由 WPS 打开，Windows 无法验证时会明确显示“未知”。draw.io 不认识的图形名会直接报错，不会悄悄退化成矩形。显微照片、复杂纹理等确实无法用形状还原的内容，只会把最小必要区域作为图片插入，其余文字、箭头和边框仍保持可编辑。数学公式请用 `powerpoint_add_equation` 以 LaTeX 插入为原生可编辑的 OMML 矢量公式，不要用纯文本或图片代替（Windows 实时绘制需要安装 Microsoft Word 完成公式转换）。
 
 每次更新都会在 Ubuntu、macOS 和 Windows 上运行代码、MCP、Python、PowerShell、路径发现与 OOXML 回归测试。本版另在真实 Mac 上验证了 PowerPoint 精确打开/刷新/关闭、WPS 指定文件打开和 draw.io 实时画布；GitHub 公共测试机没有商业版 PowerPoint/WPS，因此 Windows 的应用内联调必须由安装后的状态工具确认，不能把模拟测试当成实机连接成功。
 
@@ -57,7 +57,7 @@ scientific-illustrator@scientific-illustrator-tools。完成后提醒我重启 C
 使用 Scientific Illustrator，在当前 Microsoft PowerPoint 中复刻我上传的参考图。
 先连接 PowerPoint，检查状态、可用能力、backend 和当前幻灯片；如果没有演示文稿就新建。
 只有 COM 或 officejs-context-sync 才能声称连接当前窗口；如果使用 OOXML，明确说明正在编辑工作副本。
-默认在后台绘制，不要反复抢占窗口。优先使用可编辑的文字、形状、连接线、表格和图表；公式用 LaTeX 通过原生公式插入，不要写成纯文本。
+默认在后台绘制，不要反复抢占窗口；使用零人工等待的批量绘制。优先使用可编辑的文字、形状、连接线、表格和图表；公式用 LaTeX 通过原生公式插入，不要写成纯文本。
 只有无法可靠绘制的最小区域，例如显微照片或复杂纹理，才裁剪为图片插入。
 按区域逐步绘制，每完成一个区域就检查结构和预览图，有问题先修正再继续。
 完成后做全图对比检查，保存 PPTX 并导出最终预览图。

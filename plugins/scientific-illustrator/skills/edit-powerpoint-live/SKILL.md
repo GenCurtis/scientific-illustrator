@@ -76,6 +76,8 @@ Do not close a presentation unless explicitly requested. Closing and quitting re
 | Editable regular chart | COM/OOXML: native chart with embedded data; Office.js: named editable shape composite because the API exposes no chart insertion |
 | Repeated motif | duplicate, group/ungroup, and z-order tools; in OOXML mode recreate native charts from their series instead of duplicating a shared chart data part |
 | Exact layout | `powerpoint_align_shapes` and `powerpoint_distribute_shapes` |
+| Bounded operation batch | `powerpoint_draw_sequence` (zero artificial delay by default; one bridge process per batch) |
+| Uncertain module routing | `powerpoint_plan_reconstruction` (read-only; the model supplies observations) |
 | Structure review | `powerpoint_audit_figure` plus `powerpoint_inspect` |
 | Renderer review | `powerpoint_export_slide_image` |
 
@@ -99,29 +101,22 @@ Split prediction grids, mask comparisons, channel stacks, microscopy arrays, and
 
 In Office.js mode, pre-crop every atomic picture before calling `powerpoint_add_image` and set `source_is_tightly_cropped=true`. `ShapeFill.setImage` does not expose PowerPoint crop properties. Do not silently insert an uncropped source.
 
-## Draw one region at a time
+## Draw in bounded batches
 
 1. Establish slide size, margins, panel bounds, alignment anchors, spacing tokens, z-order, and connector lanes.
-2. Draw one logical region from background to foreground with stable names and nonzero pacing. For Office.js, use `per_object` when visible object-level commits are wanted. For OOXML PowerPoint/WPS, use the default `checkpoint` mode so every object is saved but the application is refreshed only at checkpoint boundaries; use `per_object` only when explicitly requested and warn that it is slower. Use `fast` for one final refresh.
-3. Use fixed text geometry, explicit margins, wrapping, alignment, and controlled autofit.
-4. Use attached connectors for semantic relationships in COM/OOXML. In Office.js, inspect the reported `connector_mode=geometry_backed`, use exact orthogonal routes and explicit endpoint clearances, and re-run the renderer gate after node movement.
-5. Apply start/end clearance so free arrowheads do not enter rectangles.
-6. Use exact align/distribute and table-layout tools instead of visual guessing.
-7. Group a region only after its internal objects remain individually editable and its local gate passes.
+2. Prefer `powerpoint_draw_sequence` with `step_delay_ms=0` and stable names. Windows COM and OOXML execute each bounded batch in one bridge process; OOXML also loads and saves the PPTX once per batch. Use `checkpoint` refresh at meaningful boundaries in OOXML, `fast` for a low-risk batch, and `per_object` with nonzero pacing only when the user wants to watch the animation. Office.js still requires `context.sync()` per object.
+3. Use fixed text geometry, explicit margins, wrapping, alignment, and controlled autofit; apply endpoint clearances; use exact align/distribute and table-layout tools instead of visual guessing.
+4. Batch simple, repeated objects across nearby regions. Build one representative uncertain module first, compare its render with the source, then reuse the verified motif. Keep risky crops, dense text, complex silhouettes, and cross-panel connectors small.
+5. Group a module only after its members stay individually editable. For uncertain modules, `powerpoint_plan_reconstruction` can route native / crop / hybrid / inspect and suggest batch limits; skip it for obvious objects.
 
-## Mandatory Reviewer-Corrector loop
+## Inspect at checkpoints, correct only what is defective
 
-After each completed region:
+At a meaningful checkpoint:
 
-1. In OOXML mode, call `powerpoint_refresh` and inspect `open_dispatched`, `document_open_verified`, and `refresh_verified`; never convert `null` to success.
-2. Export the current slide through `powerpoint_export_slide_image`.
-3. Run `powerpoint_audit_figure` and inspect named objects.
-4. Give structure and renderer evidence to `$audit-scientific-figure`.
-5. If it reports any finding, give the findings to `$correct-scientific-figure`.
-6. Execute the returned object-level operations.
-7. Export and audit again.
-
-Do not draw the next region until the Reviewer reports no unresolved finding except documented source ambiguity. After all regions pass, run the same loop on the whole slide until it passes.
+1. In OOXML mode, inspect the latest refresh result (`open_dispatched`, `document_open_verified`, `refresh_verified`); call `powerpoint_refresh` only when pending changes were not already refreshed by the sequence. Never convert `null` to success.
+2. Compare changed modules with the source and the whole-slide render (`powerpoint_export_slide_image`), and run `powerpoint_audit_figure` plus `powerpoint_inspect` for structure. `$audit-scientific-figure` and `$correct-scientific-figure` remain available for detailed findings and explicit correction plans.
+3. Prioritize semantic/data/text and topology failures; fix the named objects and dependent connectors, then rerender only the affected content. Reuse evidence while a module and its neighbors are unchanged; do not re-audit or re-export unchanged content.
+4. Finish with one whole-slide structure audit and visual comparison. Default to at most three correction attempts per module; if two consecutive attempts do not improve a defect, inspect the root cause or change representation. If the budget is exhausted or the source is ambiguous, keep the editable work and report the exact unresolved module instead of claiming success.
 
 ## Academic Styling Guidelines & Math Formulas
 

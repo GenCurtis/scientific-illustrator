@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.4-gcSIfix-3 — 2026-10-04
+
+- PowerPoint-only port of upstream PR #17 (v1.6.0) runtime pieces: bounded OOXML draw batches with one Python process and one PPTX load/save per batch, successful-prefix recovery on failure, stdin payloads for large UTF-8 batches, zero-delay sequence default, preflight sequence validation, and the read-only `powerpoint_plan_reconstruction` routing planner. Draw.io and macOS parts are intentionally not imported.
+- Windows COM batching (fork extension, not upstream): `powerpoint_draw_sequence` executes bounded batches in one PowerShell process with a cached application reference. Measured on this machine for 30 native shapes: 29.1 s before, 4.2 s with default checkpoint batches, 3.5 s with fast batches (~7–8x). Partial failures report the exact index and keep the committed prefix.
+- Condensed workflow rules in `edit-powerpoint-live`: bounded zero-delay batches, representative-module reuse, checkpoint review, targeted corrections, and a three-attempt correction budget. The full upstream `adaptive-workflow.md` reference is intentionally not imported to keep skill text lean.
+- New tests: adaptive planner/MCP contract tests wired into `npm test`; batch unit tests (PPTX part-level equivalence, read-only guard, failure isolation); OOXML performance and failure-recovery benchmark script (manual, requires python-pptx); live suite extended to 44 steps with COM batch and partial-failure assertions.
+
 ## 1.5.4-gcSIfix-2 — 2026-10-03
 
 - Fork version suffix: plugin, package, and README now report `1.5.4-gcSIfix-2`; the Office.js manifest keeps the numeric `1.5.4.0`, and the repository validator checks the suffix against its numeric base.
