@@ -1,0 +1,58 @@
+{
+  "schema": "scientific-illustrator/benchmark-fixture@1",
+  "id": "comparison-control-treatment",
+  "title": "Control versus treatment data plot",
+  "figure_kind": "data-plot",
+  "profile": "paper-figure",
+  "truth": {
+    "schema": "scientific-illustrator/brief@1",
+    "figure_id": "comparison-control-treatment",
+    "profile": "paper-figure",
+    "figure_kind": "data-plot",
+    "style_id": "main",
+    "profile_settings": { "column_class": "single" },
+    "intent": {
+      "message": "Treatment increases the measured concentration relative to the control, with a statistically significant difference.",
+      "audience": "Journal readership",
+      "venue": "Paper figure"
+    },
+    "inventory": [
+      { "id": "chart", "kind": "chart", "label": "Concentration by group" },
+      { "id": "ann1", "kind": "annotation", "label": "n = 12 per group" },
+      { "id": "ann2", "kind": "annotation", "label": "p < 0.01" }
+    ],
+    "claims": [
+      {
+        "id": "c1",
+        "statement": "Treatment increases concentration relative to the control.",
+        "priority": 1,
+        "supported_by": ["chart"]
+      },
+      {
+        "id": "c2",
+        "statement": "The difference between groups is significant at p < 0.01.",
+        "priority": 2,
+        "supported_by": ["ann2"]
+      }
+    ],
+    "relations": [
+      { "id": "r1", "source": "chart", "target": "ann2", "relation": "annotated-by" }
+    ],
+    "quantities": [
+      { "id": "q1", "quantity": "12", "unit": "samples per group" }
+    ]
+  },
+  "expected_design_characteristics": [
+    "A shared y-axis and scale across both groups",
+    "Direct group labeling instead of a detached legend",
+    "Error bars with a declared statistic and sample size",
+    "Significance annotation placed clear of data and axis labels"
+  ],
+  "known_failure_modes": [
+    "Truncated y-axis exaggerating the treatment effect",
+    "Groups distinguished by color alone without a second channel",
+    "Error bars shown without a stated statistic or n"
+  ],
+  "reference_output": null,
+  "rubric": "scientific-illustrator/benchmark-rubric@1"
+}

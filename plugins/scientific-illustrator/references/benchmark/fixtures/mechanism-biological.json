@@ -1,0 +1,62 @@
+{
+  "schema": "scientific-illustrator/benchmark-fixture@1",
+  "id": "mechanism-biological",
+  "title": "Biological signaling mechanism",
+  "figure_kind": "mechanism",
+  "profile": "paper-figure",
+  "truth": {
+    "schema": "scientific-illustrator/brief@1",
+    "figure_id": "mechanism-biological",
+    "profile": "paper-figure",
+    "figure_kind": "mechanism",
+    "style_id": "main",
+    "profile_settings": { "column_class": "single" },
+    "intent": {
+      "message": "Ligand binding activates a receptor and its downstream cascade, and an inhibitor blocks the receptor step.",
+      "audience": "Journal readership",
+      "venue": "Paper figure"
+    },
+    "inventory": [
+      { "id": "e1", "kind": "entity", "label": "Ligand" },
+      { "id": "e2", "kind": "entity", "label": "Membrane receptor" },
+      { "id": "e3", "kind": "conversion", "label": "Phosphorylation cascade" },
+      { "id": "e4", "kind": "entity", "label": "Transcription factor" },
+      { "id": "e5", "kind": "output", "label": "Gene expression" },
+      { "id": "i1", "kind": "inhibition", "label": "Pathway inhibitor" }
+    ],
+    "claims": [
+      {
+        "id": "c1",
+        "statement": "Ligand binding activates the receptor and the downstream phosphorylation cascade.",
+        "priority": 1,
+        "supported_by": ["e1", "e2", "e3"]
+      },
+      {
+        "id": "c2",
+        "statement": "The inhibitor blocks the receptor step of the pathway.",
+        "priority": 2,
+        "supported_by": ["i1", "e2"]
+      }
+    ],
+    "relations": [
+      { "id": "r1", "source": "e1", "target": "e2", "relation": "activates" },
+      { "id": "r2", "source": "e2", "target": "e3", "relation": "activates" },
+      { "id": "r3", "source": "e3", "target": "e4", "relation": "activates" },
+      { "id": "r4", "source": "e4", "target": "e5", "relation": "drives" },
+      { "id": "r5", "source": "i1", "target": "e2", "relation": "inhibits" }
+    ]
+  },
+  "expected_design_characteristics": [
+    "Distinct activation and inhibition arrow conventions used consistently",
+    "A membrane or compartment cue that localizes the receptor step",
+    "Causal flow with a clear left-to-right reading path",
+    "Semantic colors resolved from the manuscript style rather than invented per figure"
+  ],
+  "known_failure_modes": [
+    "Inhibition drawn with the same arrow style as activation",
+    "Ambiguous compartment boundaries that hide where the receptor sits",
+    "Node shapes or colors drifting between equal-role entities"
+  ],
+  "reference_output": null,
+  "rubric": "scientific-illustrator/benchmark-rubric@1"
+}

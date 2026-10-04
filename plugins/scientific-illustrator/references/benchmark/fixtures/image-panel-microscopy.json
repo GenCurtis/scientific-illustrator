@@ -1,0 +1,63 @@
+{
+  "schema": "scientific-illustrator/benchmark-fixture@1",
+  "id": "image-panel-microscopy",
+  "title": "Microscopy image panel",
+  "figure_kind": "image-panel",
+  "profile": "paper-figure",
+  "truth": {
+    "schema": "scientific-illustrator/brief@1",
+    "figure_id": "image-panel-microscopy",
+    "profile": "paper-figure",
+    "figure_kind": "image-panel",
+    "style_id": "main",
+    "profile_settings": { "column_class": "double" },
+    "intent": {
+      "message": "Micrographs show the treatment effect across three time points at one magnification.",
+      "audience": "Journal readership",
+      "venue": "Paper figure"
+    },
+    "inventory": [
+      { "id": "m1", "kind": "raster", "label": "0 h field", "atomic": true, "reason": "micrograph" },
+      { "id": "m2", "kind": "raster", "label": "4 h field", "atomic": true, "reason": "micrograph" },
+      { "id": "m3", "kind": "raster", "label": "24 h field", "atomic": true, "reason": "micrograph" },
+      { "id": "sb1", "kind": "scale_bar", "label": "Shared scale bar" },
+      { "id": "t1", "kind": "text", "label": "10 um" },
+      { "id": "t2", "kind": "text", "label": "Time labels" }
+    ],
+    "claims": [
+      {
+        "id": "c1",
+        "statement": "The micrographs show a progressive treatment effect across the three time points.",
+        "priority": 1,
+        "supported_by": ["m1", "m2", "m3"]
+      }
+    ],
+    "relations": [
+      { "id": "r1", "source": "m1", "target": "m2", "relation": "time-series" },
+      { "id": "r2", "source": "m2", "target": "m3", "relation": "time-series" }
+    ],
+    "quantities": [
+      { "id": "q1", "quantity": "10", "unit": "um" }
+    ],
+    "source_ambiguities": [
+      {
+        "severity": "cosmetic",
+        "question": "The exact exposure time for the 4 h field is unreadable at source resolution.",
+        "item": "t2"
+      }
+    ]
+  },
+  "expected_design_characteristics": [
+    "Each micrograph is one atomic image with editable overlays",
+    "Editable scale bar and time labels outside the raster pixels",
+    "Consistent brightness and contrast across the three fields",
+    "Aligned grid with equal gutters and matched field sizes"
+  ],
+  "known_failure_modes": [
+    "A composite image still containing multiple fields or labels",
+    "A scale bar burned into the raster pixels",
+    "Inconsistent apparent magnification from crops or zoom without a stated reason"
+  ],
+  "reference_output": null,
+  "rubric": "scientific-illustrator/benchmark-rubric@1"
+}

@@ -1,0 +1,63 @@
+{
+  "schema": "scientific-illustrator/benchmark-fixture@1",
+  "id": "process-cyclic",
+  "title": "Cyclic carbon process",
+  "figure_kind": "process",
+  "profile": "paper-figure",
+  "truth": {
+    "schema": "scientific-illustrator/brief@1",
+    "figure_id": "process-cyclic",
+    "profile": "paper-figure",
+    "figure_kind": "process",
+    "style_id": "main",
+    "profile_settings": { "column_class": "double" },
+    "intent": {
+      "message": "Carbon cycles among atmosphere, ocean, biosphere, and lithosphere through named fluxes.",
+      "audience": "Journal readership",
+      "venue": "Paper figure"
+    },
+    "inventory": [
+      { "id": "p1", "kind": "reservoir", "label": "Atmosphere" },
+      { "id": "p2", "kind": "reservoir", "label": "Ocean" },
+      { "id": "p3", "kind": "reservoir", "label": "Biosphere" },
+      { "id": "p4", "kind": "reservoir", "label": "Lithosphere" },
+      { "id": "f1", "kind": "flux", "label": "Photosynthesis" },
+      { "id": "f2", "kind": "flux", "label": "Respiration" },
+      { "id": "f3", "kind": "flux", "label": "Weathering and volcanism" }
+    ],
+    "claims": [
+      {
+        "id": "c1",
+        "statement": "Carbon cycles among four reservoirs rather than moving in one direction.",
+        "priority": 1,
+        "supported_by": ["p1", "p2", "p3", "p4"]
+      },
+      {
+        "id": "c2",
+        "statement": "Photosynthesis and respiration form the atmosphere-biosphere exchange.",
+        "priority": 2,
+        "supported_by": ["f1", "f2", "p1", "p3"]
+      }
+    ],
+    "relations": [
+      { "id": "r1", "source": "p1", "target": "p3", "relation": "photosynthesis" },
+      { "id": "r2", "source": "p3", "target": "p1", "relation": "respiration" },
+      { "id": "r3", "source": "p1", "target": "p2", "relation": "air-sea exchange" },
+      { "id": "r4", "source": "p2", "target": "p4", "relation": "sedimentation" },
+      { "id": "r5", "source": "p4", "target": "p1", "relation": "weathering and volcanism" }
+    ]
+  },
+  "expected_design_characteristics": [
+    "A clockwise cycle with a discoverable entry point and consistent direction",
+    "Reservoirs emphasized by visual weight and hierarchy, never by size-coded magnitude",
+    "Flux labels attached to their connectors instead of floating freely",
+    "No crossing flux paths; each reservoir keeps a stable position"
+  ],
+  "known_failure_modes": [
+    "The cycle rendered as an unordered cluster of boxes",
+    "Inconsistent arrow directions around the loop",
+    "Flux labels colliding with reservoir boxes or each other"
+  ],
+  "reference_output": null,
+  "rubric": "scientific-illustrator/benchmark-rubric@1"
+}

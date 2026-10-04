@@ -1,0 +1,54 @@
+{
+  "schema": "scientific-illustrator/benchmark-fixture@1",
+  "id": "workflow-linear",
+  "title": "Linear sample-processing workflow",
+  "figure_kind": "experimental-workflow",
+  "profile": "paper-figure",
+  "truth": {
+    "schema": "scientific-illustrator/brief@1",
+    "figure_id": "workflow-linear",
+    "profile": "paper-figure",
+    "figure_kind": "experimental-workflow",
+    "style_id": "main",
+    "profile_settings": { "column_class": "double" },
+    "intent": {
+      "message": "Samples move through a single linear processing chain from collection to measurement.",
+      "audience": "Journal readership",
+      "venue": "Paper figure"
+    },
+    "inventory": [
+      { "id": "s1", "kind": "input", "label": "Field sample collection" },
+      { "id": "s2", "kind": "operation", "label": "Drying and sieving" },
+      { "id": "s3", "kind": "operation", "label": "Acid digestion" },
+      { "id": "s4", "kind": "measurement", "label": "ICP-MS analysis" },
+      { "id": "s5", "kind": "output", "label": "Concentration dataset" }
+    ],
+    "claims": [
+      {
+        "id": "c1",
+        "statement": "Every sample follows the same five-stage processing chain.",
+        "priority": 1,
+        "supported_by": ["s1", "s2", "s3", "s4", "s5"]
+      }
+    ],
+    "relations": [
+      { "id": "r1", "source": "s1", "target": "s2", "relation": "feeds" },
+      { "id": "r2", "source": "s2", "target": "s3", "relation": "feeds" },
+      { "id": "r3", "source": "s3", "target": "s4", "relation": "feeds" },
+      { "id": "r4", "source": "s4", "target": "s5", "relation": "produces" }
+    ]
+  },
+  "expected_design_characteristics": [
+    "One clear left-to-right reading path with five evenly spaced stages",
+    "Equal-role stages share one node shape, size, and stroke language",
+    "Orthogonal connectors with no crossings and consistent arrowheads",
+    "Stage labels aligned on a shared baseline with reserved connector lanes"
+  ],
+  "known_failure_modes": [
+    "Stages placed with uneven spacing or drifting baselines",
+    "Decorative arrows, shadows, or gradients adding visual noise",
+    "Different node shapes used for equal-role processing stages"
+  ],
+  "reference_output": null,
+  "rubric": "scientific-illustrator/benchmark-rubric@1"
+}

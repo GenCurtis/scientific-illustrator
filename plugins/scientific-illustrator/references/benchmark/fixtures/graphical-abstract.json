@@ -1,0 +1,49 @@
+{
+  "schema": "scientific-illustrator/benchmark-fixture@1",
+  "id": "graphical-abstract",
+  "title": "Graphical abstract",
+  "figure_kind": "mixed-composite",
+  "profile": "graphical-abstract",
+  "truth": {
+    "schema": "scientific-illustrator/brief@1",
+    "figure_id": "graphical-abstract",
+    "profile": "graphical-abstract",
+    "figure_kind": "mixed-composite",
+    "style_id": "main",
+    "profile_settings": { "max_text_words": 30 },
+    "intent": {
+      "message": "The study links experimental warming to soil carbon loss through a measurable mechanism.",
+      "audience": "Journal table of contents",
+      "venue": "Graphical abstract"
+    },
+    "inventory": [
+      { "id": "g1", "kind": "graphic", "label": "Warming experiment motif" },
+      { "id": "g2", "kind": "chart", "label": "Key result" },
+      { "id": "g3", "kind": "text", "label": "One-line takeaway" }
+    ],
+    "claims": [
+      {
+        "id": "c1",
+        "statement": "Experimental warming is linked to soil carbon loss.",
+        "priority": 1,
+        "supported_by": ["g1", "g2"]
+      }
+    ],
+    "relations": [
+      { "id": "r1", "source": "g1", "target": "g2", "relation": "leads-to" }
+    ]
+  },
+  "expected_design_characteristics": [
+    "One core message readable in a thumbnail-sized rendering",
+    "Minimal text with the takeaway understandable without a caption",
+    "Palette and shape language resolved from the manuscript style",
+    "A clear visual order from experiment motif to key result"
+  ],
+  "known_failure_modes": [
+    "Dense multi-panel content squeezed into one small image",
+    "Text that becomes unreadable at thumbnail size",
+    "Decorative icons competing with the scientific message"
+  ],
+  "reference_output": null,
+  "rubric": "scientific-illustrator/benchmark-rubric@1"
+}

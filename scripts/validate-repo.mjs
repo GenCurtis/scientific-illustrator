@@ -128,6 +128,26 @@ for (const profile of ["paper-figure", "graphical-abstract", "poster", "slides",
     throw new Error(`references/profiles/${profile}.md is missing the quality checklist section.`);
   }
 }
+const benchmarkRoot = path.join(pluginRoot, "references", "benchmark");
+const benchmarkRubric = JSON.parse(await fs.readFile(path.join(benchmarkRoot, "rubric.json"), "utf8"));
+if (benchmarkRubric.schema !== "scientific-illustrator/benchmark-rubric@1") {
+  throw new Error("references/benchmark/rubric.json must declare schema scientific-illustrator/benchmark-rubric@1.");
+}
+const curatedBenchmarkFixtures = ["workflow-linear", "workflow-branched", "mechanism-biological", "process-cyclic", "comparison-before-after", "comparison-control-treatment", "multi-panel-data", "image-panel-microscopy", "network", "graphical-abstract", "poster-module", "slide-figure"];
+const benchmarkFixtures = (await fs.readdir(path.join(benchmarkRoot, "fixtures")))
+  .filter((name) => name.endsWith(".json"))
+  .map((name) => name.slice(0, -".json".length))
+  .sort();
+if (JSON.stringify(benchmarkFixtures) !== JSON.stringify([...curatedBenchmarkFixtures].sort())) {
+  throw new Error("references/benchmark/fixtures must match the curated benchmark fixture list exactly.");
+}
+for (const fixture of curatedBenchmarkFixtures) {
+  const source = JSON.parse(await fs.readFile(path.join(benchmarkRoot, "fixtures", `${fixture}.json`), "utf8"));
+  if (source.schema !== "scientific-illustrator/benchmark-fixture@1") {
+    throw new Error(`references/benchmark/fixtures/${fixture}.json must declare schema scientific-illustrator/benchmark-fixture@1.`);
+  }
+}
+await fs.access(path.join(benchmarkRoot, "README.md"));
 const ooxmlBridgePath = path.join(pluginRoot, "scripts", "powerpoint-mac-bridge.py");
 await fs.access(ooxmlBridgePath);
 await fs.access(path.join(pluginRoot, "scripts", "officejs-bridge.mjs"));

@@ -1,0 +1,51 @@
+{
+  "schema": "scientific-illustrator/benchmark-fixture@1",
+  "id": "poster-module",
+  "title": "Poster study-area module",
+  "figure_kind": "spatial",
+  "profile": "poster",
+  "truth": {
+    "schema": "scientific-illustrator/brief@1",
+    "figure_id": "poster-module",
+    "profile": "poster",
+    "figure_kind": "spatial",
+    "style_id": "main",
+    "profile_settings": { "orientation": "portrait" },
+    "intent": {
+      "message": "The study area spans two river catchments shown on one map module.",
+      "audience": "Conference poster visitors",
+      "venue": "Poster"
+    },
+    "inventory": [
+      { "id": "map1", "kind": "map", "label": "Study area map" },
+      { "id": "leg1", "kind": "legend", "label": "Map legend" },
+      { "id": "sb1", "kind": "scale_bar", "label": "Scale bar" },
+      { "id": "na1", "kind": "north_arrow", "label": "North arrow" },
+      { "id": "t1", "kind": "text", "label": "Study area" }
+    ],
+    "claims": [
+      {
+        "id": "c1",
+        "statement": "The study area spans the two river catchments.",
+        "priority": 1,
+        "supported_by": ["map1"]
+      }
+    ],
+    "relations": [
+      { "id": "r1", "source": "leg1", "target": "map1", "relation": "explains" }
+    ]
+  },
+  "expected_design_characteristics": [
+    "A map extent that stays readable from poster viewing distance",
+    "North arrow and scale bar present and unobstructed",
+    "High-contrast labels over a subdued basemap",
+    "The module aligned to the poster column grid with a clear block heading"
+  ],
+  "known_failure_modes": [
+    "A low-contrast basemap that hides boundaries and labels",
+    "Labels too small to read at poster distance",
+    "A missing scale bar or north arrow"
+  ],
+  "reference_output": null,
+  "rubric": "scientific-illustrator/benchmark-rubric@1"
+}

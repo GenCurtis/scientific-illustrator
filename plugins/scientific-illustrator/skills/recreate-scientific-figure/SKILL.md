@@ -12,6 +12,15 @@ In OpenCode, load this skill with the `skill` tool: `skill({ name: "recreate-sci
 
 Use `$recreate-scientific-figure-in-drawio` as the draw.io Drawer adapter and `$edit-powerpoint-live` as the PowerPoint/WPS Drawer adapter. Use `$audit-scientific-figure` as the Reviewer and `$correct-scientific-figure` as the Corrector.
 
+## Apply the recreation policy
+
+Read the brief with `figure_brief_read` before drawing. Its `recreation_policy` and `recreation_gate` control how strictly design rules apply:
+
+- `faithful`: maximize visual fidelity. Style and profile rules are largely advisory, unresolved semantic ambiguity is reported but does not block, and the reference is never beautified.
+- `publication-ready`: preserve scientific meaning and the main visual language while fixing accessibility, publication, typography, spacing, and export defects. Never change scientific truth without explicit user confirmation; unresolved semantic ambiguity blocks.
+
+When the brief records a `figure_kind`, load `figure_kind_get` and use its grammar to understand the reference structure before assigning regions. Both policies stay under the precedence chain: scientific truth, integrity, and explicit user decisions outrank venue constraints, reference fidelity, manuscript style, and profile defaults.
+
 ## Preserve backend parity
 
 Require both backends to deliver the same semantic capabilities:

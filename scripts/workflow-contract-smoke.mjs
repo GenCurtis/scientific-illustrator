@@ -6,7 +6,10 @@
 //   2. the MCP surface must keep zero-delay bounded batches, the planner schema,
 //      and equation tooling;
 //   3. planner routing must map onto real sequence operations, refuse silent
-//      crops, and keep zero-delay bounded execution limits.
+//      crops, and keep zero-delay bounded execution limits;
+//   4. the design skills must carry the P1 design-intelligence contract
+//      (profile/kind/brief/plan loading, the recreation policy, and the
+//      truth/design/compliance review split).
 // The draw.io skill is intentionally out of scope: its backend still paces
 // per-object playback.
 import assert from "node:assert/strict";
@@ -23,10 +26,16 @@ const read = (relative) => fs.readFile(path.join(root, relative), "utf8");
 
 // ---------------------------------------------------------------- 1. skill text
 const skills = {
+  "audit-scientific-figure": await read("plugins/scientific-illustrator/skills/audit-scientific-figure/SKILL.md"),
+  "correct-scientific-figure": await read("plugins/scientific-illustrator/skills/correct-scientific-figure/SKILL.md"),
+  "design-scientific-figure": await read("plugins/scientific-illustrator/skills/design-scientific-figure/SKILL.md"),
   "edit-powerpoint-live": await read("plugins/scientific-illustrator/skills/edit-powerpoint-live/SKILL.md"),
   "recreate-scientific-figure": await read("plugins/scientific-illustrator/skills/recreate-scientific-figure/SKILL.md"),
 };
 const requiredBySkill = {
+  "audit-scientific-figure": ["figure_brief_read", "figure_plan_read", "figure_kind_get", "truth correctness", "design quality", "publication compliance"],
+  "correct-scientific-figure": ["figure_brief_read", "figure_plan_read", "regenerated", "brief's truth"],
+  "design-scientific-figure": ["figure_profile_get", "figure_kind_get", "figure_style_read", "figure_brief_write", "figure_plan_write"],
   "edit-powerpoint-live": [
     "powerpoint_draw_sequence",
     "step_delay_ms=0",
@@ -37,7 +46,16 @@ const requiredBySkill = {
     "unchanged_since_last_call",
     "review_reminder",
   ],
-  "recreate-scientific-figure": ["zero artificial delay", "bounded batches", "checkpoint"],
+  "recreate-scientific-figure": [
+    "zero artificial delay",
+    "bounded batches",
+    "checkpoint",
+    "recreation_policy",
+    "faithful",
+    "publication-ready",
+    "precedence chain",
+    "figure_kind_get",
+  ],
 };
 for (const [skill, tokens] of Object.entries(requiredBySkill)) {
   for (const token of tokens) {
@@ -57,6 +75,7 @@ for (const [skill, text] of Object.entries(skills)) {
   }
 }
 console.log("workflow contract: PPT skill text keeps batching/checkpoint/planner rules and drops the paced per-region loop.");
+console.log("workflow contract: design skills carry profile/kind/brief/plan loading, the recreation policy, and the review split.");
 
 // ------------------------------------------------------------- 2. MCP contract
 const child = spawn(process.execPath, [path.join(root, "plugins/scientific-illustrator/scripts/powerpoint-server.mjs")], {

@@ -1,0 +1,54 @@
+{
+  "schema": "scientific-illustrator/benchmark-fixture@1",
+  "id": "slide-figure",
+  "title": "Data pipeline architecture slide",
+  "figure_kind": "system-architecture",
+  "profile": "slides",
+  "truth": {
+    "schema": "scientific-illustrator/brief@1",
+    "figure_id": "slide-figure",
+    "profile": "slides",
+    "figure_kind": "system-architecture",
+    "style_id": "main",
+    "profile_settings": { "aspect": "16:9" },
+    "intent": {
+      "message": "Data flows from sensors through a gateway and storage to analysis and a dashboard.",
+      "audience": "Conference audience",
+      "venue": "Slide deck"
+    },
+    "inventory": [
+      { "id": "s1", "kind": "node", "label": "Sensor network" },
+      { "id": "s2", "kind": "node", "label": "Edge gateway" },
+      { "id": "s3", "kind": "node", "label": "Storage" },
+      { "id": "s4", "kind": "node", "label": "Analysis" },
+      { "id": "s5", "kind": "node", "label": "Dashboard" }
+    ],
+    "claims": [
+      {
+        "id": "c1",
+        "statement": "Data flows from the sensor network through the gateway and storage to analysis and the dashboard.",
+        "priority": 1,
+        "supported_by": ["s1", "s2", "s3", "s4", "s5"]
+      }
+    ],
+    "relations": [
+      { "id": "r1", "source": "s1", "target": "s2", "relation": "streams-to" },
+      { "id": "r2", "source": "s2", "target": "s3", "relation": "streams-to" },
+      { "id": "r3", "source": "s3", "target": "s4", "relation": "feeds" },
+      { "id": "r4", "source": "s4", "target": "s5", "relation": "feeds" }
+    ]
+  },
+  "expected_design_characteristics": [
+    "One message per slide with a single main visual",
+    "Large effective typography that survives projection",
+    "A left-to-right pipeline with minimal supporting text",
+    "Master-consistent footer and page position"
+  ],
+  "known_failure_modes": [
+    "Paper-figure typography reused at a size too small on screen",
+    "Several messages crowded onto one slide",
+    "Paragraph text competing with the architecture diagram"
+  ],
+  "reference_output": null,
+  "rubric": "scientific-illustrator/benchmark-rubric@1"
+}

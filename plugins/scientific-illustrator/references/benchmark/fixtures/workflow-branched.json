@@ -1,0 +1,63 @@
+{
+  "schema": "scientific-illustrator/benchmark-fixture@1",
+  "id": "workflow-branched",
+  "title": "Branched treatment workflow",
+  "figure_kind": "experimental-workflow",
+  "profile": "paper-figure",
+  "truth": {
+    "schema": "scientific-illustrator/brief@1",
+    "figure_id": "workflow-branched",
+    "profile": "paper-figure",
+    "figure_kind": "experimental-workflow",
+    "style_id": "main",
+    "profile_settings": { "column_class": "double" },
+    "intent": {
+      "message": "A common starting material splits into two treatment arms that are measured with the same assay and compared.",
+      "audience": "Journal readership",
+      "venue": "Paper figure"
+    },
+    "inventory": [
+      { "id": "s1", "kind": "input", "label": "Homogenized starting material" },
+      { "id": "b1", "kind": "operation", "label": "Treatment A incubation" },
+      { "id": "b2", "kind": "operation", "label": "Treatment B incubation" },
+      { "id": "m1", "kind": "measurement", "label": "Assay A readout" },
+      { "id": "m2", "kind": "measurement", "label": "Assay B readout" },
+      { "id": "o1", "kind": "output", "label": "Treatment comparison" }
+    ],
+    "claims": [
+      {
+        "id": "c1",
+        "statement": "Two treatment arms run in parallel from one common starting material.",
+        "priority": 1,
+        "supported_by": ["s1", "b1", "b2"]
+      },
+      {
+        "id": "c2",
+        "statement": "Both arms are measured with the same assay before comparison.",
+        "priority": 2,
+        "supported_by": ["m1", "m2", "o1"]
+      }
+    ],
+    "relations": [
+      { "id": "r1", "source": "s1", "target": "b1", "relation": "feeds" },
+      { "id": "r2", "source": "s1", "target": "b2", "relation": "feeds" },
+      { "id": "r3", "source": "b1", "target": "m1", "relation": "feeds" },
+      { "id": "r4", "source": "b2", "target": "m2", "relation": "feeds" },
+      { "id": "r5", "source": "m1", "target": "o1", "relation": "contributes-to" },
+      { "id": "r6", "source": "m2", "target": "o1", "relation": "contributes-to" }
+    ]
+  },
+  "expected_design_characteristics": [
+    "Symmetric parallel lanes with equal lane gaps and mirrored stage positions",
+    "Shared split and merge anchors so both arms read as one experiment",
+    "Arm labels placed outside the lanes with consistent typography",
+    "A single junction treatment at the merge into the comparison"
+  ],
+  "known_failure_modes": [
+    "Crossed branch connectors between the two arms",
+    "Asymmetric spacing that visually suggests unequal importance",
+    "Ambiguous merge without a junction marker or shared anchor"
+  ],
+  "reference_output": null,
+  "rubric": "scientific-illustrator/benchmark-rubric@1"
+}

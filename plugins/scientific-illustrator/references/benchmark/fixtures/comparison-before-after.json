@@ -1,0 +1,52 @@
+{
+  "schema": "scientific-illustrator/benchmark-fixture@1",
+  "id": "comparison-before-after",
+  "title": "Before and after comparison",
+  "figure_kind": "image-panel",
+  "profile": "paper-figure",
+  "truth": {
+    "schema": "scientific-illustrator/brief@1",
+    "figure_id": "comparison-before-after",
+    "profile": "paper-figure",
+    "figure_kind": "image-panel",
+    "style_id": "main",
+    "profile_settings": { "column_class": "double" },
+    "intent": {
+      "message": "A restored condition is compared against the original condition in two matched panels.",
+      "audience": "Journal readership",
+      "venue": "Paper figure"
+    },
+    "inventory": [
+      { "id": "pa", "kind": "panel", "label": "Before condition" },
+      { "id": "pb", "kind": "panel", "label": "After restoration" },
+      { "id": "ia", "kind": "raster", "label": "Before field image", "atomic": true, "reason": "field photograph" },
+      { "id": "ib", "kind": "raster", "label": "After field image", "atomic": true, "reason": "field photograph" },
+      { "id": "ta", "kind": "text", "label": "Before" },
+      { "id": "tb", "kind": "text", "label": "After" }
+    ],
+    "claims": [
+      {
+        "id": "c1",
+        "statement": "The after panel shows the restored state of the same field as the before panel.",
+        "priority": 1,
+        "supported_by": ["pa", "pb"]
+      }
+    ],
+    "relations": [
+      { "id": "r1", "source": "pa", "target": "pb", "relation": "compared-with" }
+    ]
+  },
+  "expected_design_characteristics": [
+    "Matched field-of-view framing, scale, and brightness across the two panels",
+    "A shared scale reference instead of duplicated redundant annotations",
+    "Panel labels a and b at a consistent corner with one typography style",
+    "Equal panel sizes and gutters so the comparison is read as one unit"
+  ],
+  "known_failure_modes": [
+    "Panels rendered at different zoom or scale, invalidating the comparison",
+    "Inconsistent color mapping between the before and after images",
+    "Missing or inconsistently placed panel labels"
+  ],
+  "reference_output": null,
+  "rubric": "scientific-illustrator/benchmark-rubric@1"
+}

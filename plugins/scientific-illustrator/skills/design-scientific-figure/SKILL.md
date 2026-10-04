@@ -10,6 +10,16 @@ Act as the Designer in the four-role Scientific Illustrator protocol. Produce a 
 
 In OpenCode, load this skill with the `skill` tool: `skill({ name: "design-scientific-figure" })`.
 
+## Load design intelligence
+
+Before designing, load the reusable design knowledge:
+
+- `figure_profile_get` for the target profile's quality rules and default parameters;
+- `figure_kind_get` for the figure kind's semantic primitives, layout archetypes, encoding conventions, and failure modes;
+- `figure_style_read` for the manuscript visual system; when no style exists, propose one with `figure_style_write` only after user confirmation.
+
+Read or create the figure truth with `figure_brief_read` / `figure_brief_write`: the message, audience, inventory, exact text, figure kind, profile, and style id belong there. Infer `figure_kind` from the user's intent, state the inference explicitly, and record it in the brief; use `mixed-composite` only when the structure is genuinely composite.
+
 ## Detect constraints
 
 Read the selected backend's capabilities first. Use `powerpoint_status` then `powerpoint_get_capabilities` for PowerPoint/WPS, or `drawio_live_get_capabilities` for draw.io. When live Mac PowerPoint is requested, also require `powerpoint_officejs_status` to report a connected task pane. Design only with semantic objects the selected adapter can create editably; use declared editable composites when a native monolithic object is unavailable.
@@ -39,6 +49,10 @@ Specify before drawing:
 - z-order and meaningful grouping.
 
 Prefer one clear reading path: left-to-right, top-to-bottom, or an explicitly labeled cycle. Use no more than three primary hierarchy levels.
+
+## Record the design plan
+
+Persist the layout decisions with `figure_plan_write` as a `design-plan`: figure kind, archetype, reading order, primary claims, the encoding map (scientific identity to visual mapping), hierarchy, layout constraints, and render contexts. The plan is regenerable and carries no truth; claims, exact text, and units live in the brief only.
 
 ## Design connectors
 

@@ -17,6 +17,7 @@ Use:
 - backend and current object inventory;
 - region and stable object names/ids;
 - Reviewer category, severity, evidence, and acceptance condition;
+- the design plan (`figure_plan_read`) and the brief's claims (`figure_brief_read`) so corrections never alter truth;
 - current renderer image and reference crop when available;
 - design or reconstruction specification;
 - raster declarations and grouping/z-order.
@@ -35,7 +36,7 @@ Classify the root cause as one or more of:
 - raster crop too broad, raster not atomic, or reconstructable overlay left inside an image;
 - palette, hierarchy, or reference-correspondence mismatch.
 
-Prefer the smallest change set that fixes the root cause and preserves already approved objects.
+Prefer the smallest change set that fixes the root cause and preserves already approved objects. When a correction changes structure (archetype, reading order, or encoding), state that the design plan must be regenerated; never resolve a conflict by editing the brief's truth.
 
 ## Emit an object-level plan
 

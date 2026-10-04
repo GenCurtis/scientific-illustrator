@@ -1,0 +1,52 @@
+{
+  "schema": "scientific-illustrator/benchmark-fixture@1",
+  "id": "multi-panel-data",
+  "title": "Four-panel data figure",
+  "figure_kind": "multi-panel-data",
+  "profile": "paper-figure",
+  "truth": {
+    "schema": "scientific-illustrator/brief@1",
+    "figure_id": "multi-panel-data",
+    "profile": "paper-figure",
+    "figure_kind": "multi-panel-data",
+    "style_id": "main",
+    "profile_settings": { "column_class": "double" },
+    "intent": {
+      "message": "Four complementary views present one dataset: spatial extent, a profile, a correlation, and a time series.",
+      "audience": "Journal readership",
+      "venue": "Paper figure"
+    },
+    "inventory": [
+      { "id": "pa", "kind": "panel", "label": "Study area map" },
+      { "id": "pb", "kind": "panel", "label": "Vertical profile" },
+      { "id": "pc", "kind": "panel", "label": "Correlation scatter" },
+      { "id": "pd", "kind": "panel", "label": "Time series" },
+      { "id": "leg", "kind": "legend", "label": "Shared legend" }
+    ],
+    "claims": [
+      {
+        "id": "c1",
+        "statement": "Panels a to d present complementary views of the same study area and dataset.",
+        "priority": 1,
+        "supported_by": ["pa", "pb", "pc", "pd"]
+      }
+    ],
+    "relations": [
+      { "id": "r1", "source": "leg", "target": "pc", "relation": "labels" },
+      { "id": "r2", "source": "leg", "target": "pd", "relation": "labels" }
+    ]
+  },
+  "expected_design_characteristics": [
+    "An aligned 2x2 grid with equal gutters and matched panel edges",
+    "One font ramp and axis style shared by all four panels",
+    "Panel labels a to d in a consistent corner position",
+    "The shared legend rendered once, outside the panel content"
+  ],
+  "known_failure_modes": [
+    "Unequal gutters or misaligned panel edges",
+    "Inconsistent font sizes or axis treatments across panels",
+    "The same legend duplicated in several panels"
+  ],
+  "reference_output": null,
+  "rubric": "scientific-illustrator/benchmark-rubric@1"
+}

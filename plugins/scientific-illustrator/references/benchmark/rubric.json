@@ -1,0 +1,56 @@
+{
+  "schema": "scientific-illustrator/benchmark-rubric@1",
+  "name": "Figure design quality rubric",
+  "dimensions": [
+    {
+      "id": "scientific-correctness",
+      "name": "Scientific correctness",
+      "question": "Does the figure represent the brief's claims, relations, quantities, and topology without inventing or distorting science?"
+    },
+    {
+      "id": "scientific-clarity",
+      "name": "Scientific clarity",
+      "question": "Can a reader recover the intended message and evidence without ambiguity or misleading simplification?"
+    },
+    {
+      "id": "visual-hierarchy",
+      "name": "Visual hierarchy",
+      "question": "Does the visual weight order match the claim priority: primary message first, supporting detail second?"
+    },
+    {
+      "id": "composition",
+      "name": "Composition",
+      "question": "Are layout, alignment, spacing, and reading path deliberate and stable across regions?"
+    },
+    {
+      "id": "information-density",
+      "name": "Information density",
+      "question": "Is the amount of content per region appropriate, with no crowding and no wasted empty space?"
+    },
+    {
+      "id": "readability",
+      "name": "Readability",
+      "question": "Is every label, value, and unit readable at the intended render context (publication, screen, or thumbnail)?"
+    },
+    {
+      "id": "semantic-consistency",
+      "name": "Semantic consistency",
+      "question": "Do equal-role elements share shape, color, marker, and line conventions across the figure and the manuscript style?"
+    },
+    {
+      "id": "accessibility",
+      "name": "Accessibility",
+      "question": "Is the figure interpretable without relying on color alone, with sufficient contrast and grayscale separation?"
+    },
+    {
+      "id": "publication-compliance",
+      "name": "Publication compliance",
+      "question": "Does the deliverable satisfy the applicable publisher or venue constraints (size, resolution, format, typography limits)?"
+    },
+    {
+      "id": "professional-polish",
+      "name": "Professional polish",
+      "question": "Is the result free of accidental artifacts, decoration noise, and inconsistencies a reviewer would flag in production?"
+    }
+  ]
+}

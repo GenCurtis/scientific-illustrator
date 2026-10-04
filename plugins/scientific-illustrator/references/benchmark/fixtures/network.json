@@ -1,0 +1,55 @@
+{
+  "schema": "scientific-illustrator/benchmark-fixture@1",
+  "id": "network",
+  "title": "Interaction network",
+  "figure_kind": "network",
+  "profile": "paper-figure",
+  "truth": {
+    "schema": "scientific-illustrator/brief@1",
+    "figure_id": "network",
+    "profile": "paper-figure",
+    "figure_kind": "network",
+    "style_id": "main",
+    "profile_settings": { "column_class": "double" },
+    "intent": {
+      "message": "Five nodes form two communities connected through one hub.",
+      "audience": "Journal readership",
+      "venue": "Paper figure"
+    },
+    "inventory": [
+      { "id": "n1", "kind": "node", "label": "Hub species" },
+      { "id": "n2", "kind": "node", "label": "Community A node 1" },
+      { "id": "n3", "kind": "node", "label": "Community A node 2" },
+      { "id": "n4", "kind": "node", "label": "Community B node 1" },
+      { "id": "n5", "kind": "node", "label": "Community B node 2" },
+      { "id": "leg", "kind": "legend", "label": "Edge-type legend" }
+    ],
+    "claims": [
+      {
+        "id": "c1",
+        "statement": "The five nodes cluster into two communities bridged by one hub.",
+        "priority": 1,
+        "supported_by": ["n1", "n2", "n3", "n4", "n5"]
+      }
+    ],
+    "relations": [
+      { "id": "r1", "source": "n1", "target": "n2", "relation": "interacts" },
+      { "id": "r2", "source": "n1", "target": "n3", "relation": "interacts" },
+      { "id": "r3", "source": "n1", "target": "n4", "relation": "interacts" },
+      { "id": "r4", "source": "n4", "target": "n5", "relation": "interacts" }
+    ]
+  },
+  "expected_design_characteristics": [
+    "A node-link layout with crossing-free edges where topology allows",
+    "Node degree encoded by size while the hub is visually emphasized",
+    "An edge-type legend with consistent line conventions",
+    "Community separation visible without relying on color alone"
+  ],
+  "known_failure_modes": [
+    "A hairball layout with no hierarchy or community structure",
+    "Avoidable edge crossings left unrepaired",
+    "Unlabeled hubs and unstated node or edge meaning"
+  ],
+  "reference_output": null,
+  "rubric": "scientific-illustrator/benchmark-rubric@1"
+}
