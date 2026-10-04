@@ -99,6 +99,15 @@ for (const serverFile of ["live-server.mjs", "server.mjs", "powerpoint-server.mj
     throw new Error(`${serverFile} does not serialize stateful MCP requests.`);
   }
 }
+const profileDefaults = JSON.parse(await fs.readFile(path.join(pluginRoot, "references", "profiles", "defaults.json"), "utf8"));
+if (profileDefaults.schema !== "scientific-illustrator/profile-defaults@1") {
+  throw new Error("references/profiles/defaults.json must declare schema scientific-illustrator/profile-defaults@1.");
+}
+for (const profile of ["paper-figure", "graphical-abstract", "poster", "slides", "diagram"]) {
+  if (!profileDefaults.profiles || typeof profileDefaults.profiles[profile] !== "object" || profileDefaults.profiles[profile] === null || Array.isArray(profileDefaults.profiles[profile])) {
+    throw new Error(`references/profiles/defaults.json has missing or invalid parameters for profile "${profile}".`);
+  }
+}
 const ooxmlBridgePath = path.join(pluginRoot, "scripts", "powerpoint-mac-bridge.py");
 await fs.access(ooxmlBridgePath);
 await fs.access(path.join(pluginRoot, "scripts", "officejs-bridge.mjs"));

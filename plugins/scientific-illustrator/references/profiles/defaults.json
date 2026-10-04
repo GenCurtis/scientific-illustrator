@@ -1,0 +1,44 @@
+{
+  "schema": "scientific-illustrator/profile-defaults@1",
+  "comment": "Machine-readable default parameters per design profile. Each entry is a parameter object; {\"default\": value} marks a parameter with a default, {} marks a known parameter without one. Quality rules live in the design profile documents (P1); publisher/venue numbers are resolved separately by the publication-compliance layer. Values are intentionally loose defaults: a project's brief.profile_settings overrides them.",
+  "profiles": {
+    "paper-figure": {
+      "journal": {},
+      "column_class": { "default": "single" },
+      "canvas_mm": {},
+      "min_font_pt": { "default": 7 },
+      "min_raster_dpi": { "default": 300 },
+      "vector_required": { "default": true },
+      "panel_label_scheme": { "default": "lowercase" },
+      "export_targets": {}
+    },
+    "graphical-abstract": {
+      "canvas": {},
+      "max_text_words": { "default": 30 },
+      "thumbnail_test_width": { "default": 300 },
+      "min_raster_dpi": { "default": 300 },
+      "export_targets": {}
+    },
+    "poster": {
+      "canvas_mm": {},
+      "orientation": { "default": "portrait" },
+      "columns": { "default": 3 },
+      "min_font_pt": { "default": 24 },
+      "blocks": {},
+      "reading_path": { "default": "numbers" },
+      "qr_required": { "default": false },
+      "export_targets": {}
+    },
+    "slides": {
+      "aspect": { "default": "16:9" },
+      "venue": {},
+      "min_font_pt": { "default": 18 },
+      "max_bullets": { "default": 6 },
+      "animation_policy": { "default": "fade-only" },
+      "export_targets": {}
+    },
+    "diagram": {
+      "export_targets": {}
+    }
+  }
+}

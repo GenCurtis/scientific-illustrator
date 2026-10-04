@@ -1,14 +1,17 @@
-// Figure Truth (P0a): persistent figure brief support for the Scientific
-// Illustrator file-utilities server. Provides the minimal brief schema
-// validation, the three-level path resolution (explicit brief_path > nearest
-// ancestor .scientific-illustrator/ > sibling <stem>.si-brief.json), and
-// atomic read/write with allowed-root confinement shared through guardrails.
+// Figure Truth (P0a, extended in P0d): persistent figure brief support for the
+// Scientific Illustrator file-utilities server. Provides brief schema
+// validation (inventory, scientific claims/relations/quantities, source
+// ambiguity grading, recreation policy), the three-level path resolution
+// (explicit brief_path > nearest ancestor .scientific-illustrator/ > sibling
+// <stem>.si-brief.json), atomic read/write with allowed-root confinement
+// shared through guardrails, and the machine-readable profile parameter
+// defaults served to the figure_profile_get tool.
 //
 // The brief is durable scientific truth (see the planning design docs); the
 // design plan is a separate artifact. This module never invents truth: a
 // missing brief is reported as exists=false instead of an error.
 
-import { promises as fs } from "node:fs";
+import { promises as fs, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { allowedRoot, assertAllowedPath, assertAllowedRealPath, atomicWrite } from "./guardrails.mjs";
@@ -16,6 +19,89 @@ import { allowedRoot, assertAllowedPath, assertAllowedRealPath, atomicWrite } fr
 export const BRIEF_SCHEMA_VERSION = "scientific-illustrator/brief@1";
 
 export const KNOWN_PROFILES = ["paper-figure", "graphical-abstract", "poster", "slides", "diagram"];
+
+// figure_kind is the scientific-information structure dimension, orthogonal to
+// profile (see the figure-intelligence design doc). Unknown values are
+// warnings, not errors: the taxonomy may grow (domain subtypes) and the schema
+// version manages structural change.
+export const KNOWN_FIGURE_KINDS = [
+  "data-plot",
+  "multi-panel-data",
+  "experimental-workflow",
+  "mechanism",
+  "process",
+  "system-architecture",
+  "image-panel",
+  "spatial",
+  "network",
+  "mixed-composite",
+];
+
+// Source-ambiguity grading: cosmetic never blocks; structural is configurable
+// via acceptance.block_on_structural_ambiguity; semantic blocks unresolved in
+// publication-ready recreation (see evaluateRecreationGate).
+export const KNOWN_AMBIGUITY_SEVERITIES = ["cosmetic", "structural", "semantic"];
+
+export const PROFILE_DEFAULTS_SCHEMA_VERSION = "scientific-illustrator/profile-defaults@1";
+
+const PROFILE_DEFAULTS_SOURCE = "references/profiles/defaults.json";
+
+// Lazily loaded once per process. An invalid or missing defaults file must not
+// crash the servers that import this module (findings-ledger -> powerpoint /
+// live servers), so the state carries either the parsed document or the load
+// error. Explicit readProfileDefaults() calls fail loudly on the error; the
+// advisory profile_settings typo check degrades silently.
+let profileDefaultsState = null;
+
+function loadProfileDefaultsDocument() {
+  if (profileDefaultsState) return profileDefaultsState;
+  try {
+    const raw = readFileSync(new URL("../references/profiles/defaults.json", import.meta.url), "utf8");
+    const document = JSON.parse(raw);
+    if (!isPlainObject(document) || document.schema !== PROFILE_DEFAULTS_SCHEMA_VERSION) {
+      throw new Error(`expected schema "${PROFILE_DEFAULTS_SCHEMA_VERSION}"`);
+    }
+    if (!isPlainObject(document.profiles)) throw new Error("profiles must be an object");
+    for (const [profile, parameters] of Object.entries(document.profiles)) {
+      if (!KNOWN_PROFILES.includes(profile)) throw new Error(`unknown profile "${profile}"`);
+      if (!isPlainObject(parameters)) throw new Error(`profiles.${profile} must be an object`);
+      for (const [key, spec] of Object.entries(parameters)) {
+        if (!isPlainObject(spec)) throw new Error(`profiles.${profile}.${key} must be a parameter object`);
+      }
+    }
+    profileDefaultsState = { document };
+  } catch (error) {
+    profileDefaultsState = { error };
+  }
+  return profileDefaultsState;
+}
+
+function knownProfileParameterKeys(profile) {
+  const state = loadProfileDefaultsDocument();
+  if (state.error) return null;
+  const parameters = state.document.profiles[profile];
+  return parameters ? new Set(Object.keys(parameters)) : null;
+}
+
+// Explicit read used by figure_profile_get: unknown profiles and a broken
+// defaults file are errors here, because the caller asked for this data.
+export function readProfileDefaults(profile) {
+  if (typeof profile !== "string" || !profile.trim()) {
+    throw new Error("profile must be a non-empty string.");
+  }
+  if (!KNOWN_PROFILES.includes(profile)) {
+    throw new Error(`profile "${profile}" is not one of the known profiles (${KNOWN_PROFILES.join(", ")}).`);
+  }
+  const state = loadProfileDefaultsDocument();
+  if (state.error) {
+    throw new Error(`Profile defaults at ${PROFILE_DEFAULTS_SOURCE} are unavailable or invalid: ${state.error.message}`);
+  }
+  return {
+    profile,
+    parameters: structuredClone(state.document.profiles[profile]),
+    source: PROFILE_DEFAULTS_SOURCE,
+  };
+}
 
 // Fields the brief@1 schema understands. Everything else is preserved but
 // reported as a schema warning so typos cannot masquerade as valid config.
@@ -85,6 +171,118 @@ function validateDispositionEntries(list, label, mode, errors) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// P0d semantic fields: claims, relations, quantities, source ambiguity.
+// Cross-references must resolve against inventory ids; dangling references in
+// claims.supported_by and relations.source/target are errors (they would make
+// "supported by" and arrow direction unverifiable), while ambiguity items may
+// legitimately point at canvas objects outside the inventory and therefore
+// only warn.
+
+function collectInventoryIds(document) {
+  const ids = new Set();
+  if (Array.isArray(document.inventory)) {
+    for (const item of document.inventory) {
+      if (isPlainObject(item) && typeof item.id === "string" && item.id.trim()) ids.add(item.id);
+    }
+  }
+  return ids;
+}
+
+function validateClaims(claims, inventoryIds, errors) {
+  const seen = new Set();
+  claims.forEach((claim, index) => {
+    const label = `claims[${index}]`;
+    if (!isPlainObject(claim)) {
+      errors.push(`${label} must be an object.`);
+      return;
+    }
+    if (requireNonEmptyString(claim.id, `${label}.id`, errors)) {
+      if (seen.has(claim.id)) errors.push(`${label}.id "${claim.id}" is duplicated; claim ids must stay unique.`);
+      else seen.add(claim.id);
+    }
+    requireNonEmptyString(claim.statement, `${label}.statement`, errors);
+    if (claim.priority !== undefined && (!Number.isInteger(claim.priority) || claim.priority < 1)) {
+      errors.push(`${label}.priority must be a positive integer when present.`);
+    }
+    if (claim.supported_by !== undefined) {
+      if (!Array.isArray(claim.supported_by)) {
+        errors.push(`${label}.supported_by must be an array of inventory ids when present.`);
+      } else {
+        claim.supported_by.forEach((ref, refIndex) => {
+          if (!requireNonEmptyString(ref, `${label}.supported_by[${refIndex}]`, errors)) return;
+          if (!inventoryIds.has(ref)) {
+            errors.push(`${label}.supported_by[${refIndex}] references unknown inventory id "${ref}".`);
+          }
+        });
+      }
+    }
+    if (claim.status !== undefined) requireNonEmptyString(claim.status, `${label}.status`, errors);
+  });
+}
+
+function validateRelations(relations, inventoryIds, errors) {
+  const seen = new Set();
+  relations.forEach((relation, index) => {
+    const label = `relations[${index}]`;
+    if (!isPlainObject(relation)) {
+      errors.push(`${label} must be an object.`);
+      return;
+    }
+    if (requireNonEmptyString(relation.id, `${label}.id`, errors)) {
+      if (seen.has(relation.id)) errors.push(`${label}.id "${relation.id}" is duplicated; relation ids must stay unique.`);
+      else seen.add(relation.id);
+    }
+    for (const endpoint of ["source", "target"]) {
+      if (requireNonEmptyString(relation[endpoint], `${label}.${endpoint}`, errors) && !inventoryIds.has(relation[endpoint])) {
+        errors.push(`${label}.${endpoint} references unknown inventory id "${relation[endpoint]}".`);
+      }
+    }
+    requireNonEmptyString(relation.relation, `${label}.relation`, errors);
+  });
+}
+
+function validateQuantities(quantities, errors) {
+  const seen = new Set();
+  quantities.forEach((quantity, index) => {
+    const label = `quantities[${index}]`;
+    if (!isPlainObject(quantity)) {
+      errors.push(`${label} must be an object.`);
+      return;
+    }
+    if (requireNonEmptyString(quantity.id, `${label}.id`, errors)) {
+      if (seen.has(quantity.id)) errors.push(`${label}.id "${quantity.id}" is duplicated; quantity ids must stay unique.`);
+      else seen.add(quantity.id);
+    }
+    requireNonEmptyString(quantity.quantity, `${label}.quantity`, errors);
+    requireNonEmptyString(quantity.unit, `${label}.unit`, errors);
+  });
+}
+
+function validateSourceAmbiguities(ambiguities, inventoryIds, errors, warnings) {
+  ambiguities.forEach((ambiguity, index) => {
+    const label = `source_ambiguities[${index}]`;
+    if (!isPlainObject(ambiguity)) {
+      errors.push(`${label} must be an object.`);
+      return;
+    }
+    if (!KNOWN_AMBIGUITY_SEVERITIES.includes(ambiguity.severity)) {
+      errors.push(`${label}.severity must be one of ${KNOWN_AMBIGUITY_SEVERITIES.join(", ")}.`);
+    }
+    requireNonEmptyString(ambiguity.question, `${label}.question`, errors);
+    if (ambiguity.item !== undefined) {
+      if (requireNonEmptyString(ambiguity.item, `${label}.item`, errors) && !inventoryIds.has(ambiguity.item)) {
+        warnings.push(
+          `${label}.item "${ambiguity.item}" does not match an inventory id; it may reference a canvas object or a free-form target.`
+        );
+      }
+    }
+    if (ambiguity.resolution !== undefined && ambiguity.resolution !== null) {
+      requireNonEmptyString(ambiguity.resolution, `${label}.resolution`, errors);
+    }
+  });
+}
+
 // Filesystem-safe slug used for brief file names (<slug>.brief.json). Keeps
 // the identification readable for humans while stripping path-hostile
 // characters on every supported platform. Long stems are truncated with a
@@ -136,8 +334,14 @@ export function validateBrief(document) {
       errors.push(`${key} must be an object when present.`);
     }
   }
-  if (document.figure_kind !== undefined && (typeof document.figure_kind !== "string" || !document.figure_kind.trim())) {
-    errors.push("figure_kind must be a non-empty string when present.");
+  if (document.figure_kind !== undefined) {
+    if (typeof document.figure_kind !== "string" || !document.figure_kind.trim()) {
+      errors.push("figure_kind must be a non-empty string when present.");
+    } else if (!KNOWN_FIGURE_KINDS.includes(document.figure_kind)) {
+      warnings.push(
+        `figure_kind "${document.figure_kind}" is not one of the known kinds (${KNOWN_FIGURE_KINDS.join(", ")}); preserved for forward compatibility.`
+      );
+    }
   }
   for (const key of ["claims", "relations", "quantities", "source_ambiguities", "intentional_deviations", "disputes"]) {
     if (document[key] !== undefined && !Array.isArray(document[key])) {
@@ -149,6 +353,36 @@ export function validateBrief(document) {
   }
   if (Array.isArray(document.disputes)) {
     validateDispositionEntries(document.disputes, "disputes", "dispute", errors);
+  }
+  const inventoryIds = collectInventoryIds(document);
+  if (Array.isArray(document.claims)) {
+    validateClaims(document.claims, inventoryIds, errors);
+  }
+  if (Array.isArray(document.relations)) {
+    validateRelations(document.relations, inventoryIds, errors);
+  }
+  if (Array.isArray(document.quantities)) {
+    validateQuantities(document.quantities, errors);
+  }
+  if (Array.isArray(document.source_ambiguities)) {
+    validateSourceAmbiguities(document.source_ambiguities, inventoryIds, errors, warnings);
+  }
+  if (isPlainObject(document.acceptance) && document.acceptance.block_on_structural_ambiguity !== undefined) {
+    if (typeof document.acceptance.block_on_structural_ambiguity !== "boolean") {
+      errors.push("acceptance.block_on_structural_ambiguity must be a boolean when present.");
+    }
+  }
+  if (isPlainObject(document.profile_settings) && typeof document.profile === "string" && KNOWN_PROFILES.includes(document.profile)) {
+    const knownKeys = knownProfileParameterKeys(document.profile);
+    if (knownKeys) {
+      for (const key of Object.keys(document.profile_settings)) {
+        if (!knownKeys.has(key)) {
+          warnings.push(
+            `profile_settings.${key} is not a known parameter for profile "${document.profile}" (${[...knownKeys].join(", ")}); preserved as a project-specific parameter.`
+          );
+        }
+      }
+    }
   }
   if (isPlainObject(document.acceptance) && document.acceptance.waivable_categories !== undefined) {
     if (!Array.isArray(document.acceptance.waivable_categories)) {
@@ -194,6 +428,45 @@ export function validateBrief(document) {
     }
   }
   return { errors, warnings };
+}
+
+// Recreation policy gate (P0d): a pure evaluation of the brief's unresolved
+// source ambiguities under the declared recreation_policy. faithful reports
+// semantic ambiguity without blocking (reference fidelity wins); publication-
+// ready blocks unresolved semantic ambiguity by default and can additionally
+// block unresolved structural ambiguity via
+// acceptance.block_on_structural_ambiguity. Cosmetic ambiguity and resolved
+// entries never block. This does not inspect the canvas; it is the contract
+// downstream skills and audits consume.
+export function evaluateRecreationGate(document) {
+  const policy =
+    isPlainObject(document) && typeof document.recreation_policy === "string" ? document.recreation_policy : "unspecified";
+  const ambiguities = isPlainObject(document) && Array.isArray(document.source_ambiguities) ? document.source_ambiguities : [];
+  const acceptance = isPlainObject(document) && isPlainObject(document.acceptance) ? document.acceptance : null;
+  const blockStructural = acceptance?.block_on_structural_ambiguity === true;
+  const blocking = [];
+  const advisory = [];
+  const resolved = [];
+  for (const ambiguity of ambiguities) {
+    if (!isPlainObject(ambiguity)) continue;
+    const entry = {
+      item: typeof ambiguity.item === "string" && ambiguity.item.trim() ? ambiguity.item : null,
+      severity: typeof ambiguity.severity === "string" ? ambiguity.severity : null,
+      question: typeof ambiguity.question === "string" && ambiguity.question.trim() ? ambiguity.question : null,
+    };
+    const resolution =
+      typeof ambiguity.resolution === "string" && ambiguity.resolution.trim() ? ambiguity.resolution.trim() : null;
+    if (resolution) {
+      resolved.push({ item: entry.item, severity: entry.severity, question: entry.question });
+      continue;
+    }
+    const blocks =
+      policy === "publication-ready" &&
+      (entry.severity === "semantic" || (entry.severity === "structural" && blockStructural));
+    if (blocks) blocking.push(entry);
+    else advisory.push(entry);
+  }
+  return { policy, blocking, advisory, resolved };
 }
 
 function isWithinRoot(resolved, root) {
@@ -251,11 +524,12 @@ function normalizePathArgument(value, name) {
 //   3. sibling file next to the artifact.
 // The tool never creates .scientific-illustrator/ itself; the user opts into
 // the project-level layout by creating that directory once.
-async function resolveFigureDocumentTarget({
+export async function resolveFigureDocumentTarget({
   artifactPath,
   explicitPath,
   explicitParamName,
   subject,
+  projectSubdirectory = "figures",
   projectFileName,
   siblingFileName,
 }) {
@@ -276,7 +550,7 @@ async function resolveFigureDocumentTarget({
   const projectDirectory = await findProjectDirectory(artifactDirectory, allowedRoot());
   if (projectDirectory) {
     return {
-      target: path.join(projectDirectory, ".scientific-illustrator", "figures", projectFileName(stem)),
+      target: path.join(projectDirectory, ".scientific-illustrator", projectSubdirectory, projectFileName(stem)),
       resolutionBasis: "project",
       artifactDirectory,
     };
@@ -331,6 +605,7 @@ export async function readFigureBrief({ artifactPath, briefPath } = {}) {
         revision: null,
         schema_warnings: [],
         exists: false,
+        recreation_gate: evaluateRecreationGate(null),
       };
     }
     throw error;
@@ -353,6 +628,7 @@ export async function readFigureBrief({ artifactPath, briefPath } = {}) {
     revision: Number.isInteger(document.revision) ? document.revision : null,
     schema_warnings: warnings,
     exists: true,
+    recreation_gate: evaluateRecreationGate(document),
   };
 }
 
@@ -445,5 +721,12 @@ export async function writeFigureBrief({ artifactPath, briefPath, document, expe
   next.revision = revision;
 
   await atomicWrite(target, `${JSON.stringify(next, null, 2)}\n`, "utf8");
-  return { resolved_path: target, resolution_basis: resolutionBasis, revision, created, schema_warnings: warnings };
+  return {
+    resolved_path: target,
+    resolution_basis: resolutionBasis,
+    revision,
+    created,
+    schema_warnings: warnings,
+    recreation_gate: evaluateRecreationGate(next),
+  };
 }

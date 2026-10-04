@@ -8,7 +8,8 @@ import path from "node:path";
 import os from "node:os";
 import { drawioInstallHint, resolveDrawioExecutable } from "./drawio-path.mjs";
 import { VERSION as SERVER_VERSION, assertAllowedPath, assertAllowedRealPath, atomicWrite } from "./guardrails.mjs";
-import { readFigureBrief, writeFigureBrief } from "./figure-truth.mjs";
+import { readFigureBrief, writeFigureBrief, readProfileDefaults } from "./figure-truth.mjs";
+import { readFigureStyle, writeFigureStyle } from "./figure-style.mjs";
 
 const execFileAsync = promisify(execFile);
 const SERVER_NAME = "scientific-illustrator-file-utils";
@@ -321,6 +322,69 @@ const tools = [
           type: "integer",
           minimum: 0,
           description: "Current revision when updating; omit only when creating.",
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "figure_style_read",
+    description:
+      "Read the persistent manuscript style contract (shared visual language: palette, fonts, lines, panel labels, chart conventions). Resolution order: explicit style_path; nearest ancestor '.scientific-illustrator/styles/<style_id>.json' above the artifact; sibling '<style_id>.si-style.json' next to the artifact. Returns exists=false and document=null when no style exists yet; a style is optional truth and the caller falls back to profile defaults.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        artifact_path: {
+          type: "string",
+          description: "Absolute path of the artifact (.drawio/.pptx) that anchors project/sibling style discovery.",
+        },
+        style_path: { type: "string", description: "Explicit style JSON path; overrides discovery." },
+        style_id: {
+          type: "string",
+          description: "Style contract id (filename-safe). Defaults to \"main\" when resolving by artifact; ignored for identity checks when only style_path is given.",
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "figure_style_write",
+    description:
+      "Create or update the persistent manuscript style contract. Creation writes revision 0; updates require expected_revision matching the current revision and increment it by 1 (optimistic locking). revision/created_at/updated_at are tool-managed. The document style_id must match the requested style_id. Unknown fields are preserved and reported in schema_warnings. Same resolution as figure_style_read.",
+    inputSchema: {
+      type: "object",
+      required: ["document"],
+      properties: {
+        artifact_path: {
+          type: "string",
+          description: "Absolute path of the artifact (.drawio/.pptx) that anchors project/sibling style discovery.",
+        },
+        style_path: { type: "string", description: "Explicit style JSON path; overrides discovery." },
+        style_id: {
+          type: "string",
+          description: "Style contract id (filename-safe). Defaults to \"main\" when resolving by artifact; ignored for identity checks when only style_path is given.",
+        },
+        document: { type: "object", description: "Full style document following the style@1 schema." },
+        expected_revision: {
+          type: "integer",
+          minimum: 0,
+          description: "Current revision when updating; omit only when creating.",
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "figure_profile_get",
+    description:
+      "Return the machine-readable default parameters for a design profile (paper-figure, graphical-abstract, poster, slides, diagram). Parameters without a default are returned as empty objects ({}); brief.profile_settings overrides these defaults. Profile quality rules and publisher numbers are separate layers (later stages).",
+    inputSchema: {
+      type: "object",
+      required: ["profile"],
+      properties: {
+        profile: {
+          type: "string",
+          description: "Design profile id: paper-figure, graphical-abstract, poster, slides, or diagram.",
         },
       },
       additionalProperties: false,
@@ -1035,6 +1099,18 @@ async function handleTool(name, args = {}) {
         document: args.document,
         expectedRevision: args.expected_revision,
       });
+    case "figure_style_read":
+      return readFigureStyle({ artifactPath: args.artifact_path, stylePath: args.style_path, styleId: args.style_id });
+    case "figure_style_write":
+      return writeFigureStyle({
+        artifactPath: args.artifact_path,
+        stylePath: args.style_path,
+        styleId: args.style_id,
+        document: args.document,
+        expectedRevision: args.expected_revision,
+      });
+    case "figure_profile_get":
+      return readProfileDefaults(args.profile);
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
@@ -1049,7 +1125,7 @@ async function handleMessage(message) {
       protocolVersion,
       capabilities: { tools: { listChanged: false } },
       serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
-      instructions: "This is the post-live draw.io file-utilities server, not the live drawing backend. For Scientific Illustrator work, first use drawio_live_get_capabilities and construct every region visibly with drawio_live_* tools, including local screenshot/correction gates. Use these file utilities only after live cells exist to validate, inspect, export, or repair a saved snapshot, unless the user explicitly requested a non-live file-only workflow. drawio_create_diagram and drawio_write_xml require a declared workflow_context. Never rasterize reconstructable text, shapes, arrows, tables, charts, axes, or legends; every deliverable image cell must be one atomic irreducible raster unit with a specific reason, tight-source/crop audit, contains_reconstructable_content=false, and a decomposition note. Inline HTML/SVG images are rejected because their source and crop cannot be audited. A trace reference overlay is analysis-only and must not remain in the final deliverable. figure_brief_read/figure_brief_write persist the scientific-truth brief with three-level resolution (explicit path, project .scientific-illustrator/, or sibling); a missing brief is reported as exists=false, never invented.",
+      instructions: "This is the post-live draw.io file-utilities server, not the live drawing backend. For Scientific Illustrator work, first use drawio_live_get_capabilities and construct every region visibly with drawio_live_* tools, including local screenshot/correction gates. Use these file utilities only after live cells exist to validate, inspect, export, or repair a saved snapshot, unless the user explicitly requested a non-live file-only workflow. drawio_create_diagram and drawio_write_xml require a declared workflow_context. Never rasterize reconstructable text, shapes, arrows, tables, charts, axes, or legends; every deliverable image cell must be one atomic irreducible raster unit with a specific reason, tight-source/crop audit, contains_reconstructable_content=false, and a decomposition note. Inline HTML/SVG images are rejected because their source and crop cannot be audited. A trace reference overlay is analysis-only and must not remain in the final deliverable. figure_brief_read/figure_brief_write persist the scientific-truth brief with three-level resolution (explicit path, project .scientific-illustrator/, or sibling); a missing brief is reported as exists=false, never invented, and brief reads/writes return recreation_gate (unresolved ambiguity under the declared recreation policy). figure_style_read/figure_style_write persist the shared manuscript style contract with the same resolution and optimistic locking. figure_profile_get returns the machine-readable default parameters for a design profile.",
     });
   }
   if (method === "ping") return rpcResult(id, {});
