@@ -101,7 +101,7 @@ export function grayscaleLuminance(hex) {
   return 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b;
 }
 
-function normalizeHex(value) {
+export function normalizeHex(value) {
   const match = typeof value === "string" ? /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(value.trim()) : null;
   if (!match) return null;
   let hex = match[1].toLowerCase();
@@ -114,7 +114,7 @@ function normalizeHex(value) {
   return `#${hex}`;
 }
 
-function collectHexColors(value, out, depth = 0) {
+export function collectHexColors(value, out, depth = 0) {
   if (depth > 4 || value === null || value === undefined) return out;
   if (typeof value === "string") {
     const hex = normalizeHex(value);

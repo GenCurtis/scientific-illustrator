@@ -11,6 +11,7 @@ import { getOfficeJsBridge } from "./officejs-bridge.mjs";
 import { planReconstruction, reconstructionPlanTool } from "./adaptive-planner.mjs";
 import { annotateAuditResult } from "./findings-ledger.mjs";
 import { applyPerceptualQa } from "./perceptual-audit.mjs";
+import { applyDeckConsistency } from "./deck-audit.mjs";
 import { VERSION as SERVER_VERSION, assertAllowedRealPath, atomicWrite } from "./guardrails.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -101,6 +102,7 @@ let mutationCount = 0;
 const EVIDENCE_SCOPES = {
   inspect: (args) => `slides:${args.max_slides ?? "all"}`,
   audit_figure: (args) => `slide:${args.slide_index ?? "all"}`,
+  audit_deck: () => "deck",
   export_slide_image: (args) => `slide:${args.slide_index ?? 1}`,
 };
 const evidenceState = {};
@@ -120,6 +122,7 @@ function disciplineSnapshot() {
     revision: mutationCount,
     redundant_inspects: evidenceState.inspect.redundant,
     redundant_audits: evidenceState.audit_figure.redundant,
+    redundant_deck_audits: evidenceState.audit_deck.redundant,
     redundant_renders: evidenceState.export_slide_image.redundant,
     mutations_since_last_inspect: since("inspect"),
     mutations_since_last_audit: since("audit_figure"),
@@ -330,6 +333,18 @@ const tools = [
         text_overflow_tolerance: { type: "number", minimum: 0, maximum: 50, default: 1.5 },
         large_raster_area_ratio: { type: "number", minimum: 0.001, maximum: 1, default: 0.08 },
         max_findings: { type: "integer", minimum: 1, maximum: 2000, default: 300 },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "powerpoint_audit_deck",
+    description: "Run a read-only cross-slide consistency audit for a slide deck: compares the presentation's per-slide fonts, colors, and title-size proxies with the deck truth document (deck@1: slide count and referenced slide briefs) and the shared style contract (declared fonts and palette). Findings are advisory by default and become hard when the style sets enforce=\"hard\"; the result carries `deck_consistency`, `summary`, `ledger_applied` (scope deck), and a `discipline` block so repeated unchanged deck audits and review debt are measurable. Per-slide summaries are currently produced only by the OOXML backend (WPS and file-backed sessions); the COM and Office.js bridges do not implement this action and report an unsupported-action error, so switch backends explicitly when needed.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        artifact_path: { type: "string", description: "Absolute path of the presentation artifact used to locate the deck truth document, the style contract, and the findings ledger. Optional; defaults to the file reported by the active backend when it exposes one." },
+        deck_path: { type: "string", description: "Absolute path of the deck truth document (deck.json). Optional; defaults to the deck resolved from artifact_path through the three-level discovery." },
       },
       additionalProperties: false,
     },
@@ -1212,6 +1227,19 @@ async function runBridge(action, args = {}, forcedBackend = null) {
         revision: disciplineSnapshot().revision,
       });
     }
+    if (action === "audit_deck") {
+      const explicitArtifact =
+        typeof effectiveArgs.artifact_path === "string" && effectiveArgs.artifact_path.trim() ? effectiveArgs.artifact_path : null;
+      const artifactPath = explicitArtifact || value.source_path || value.presentation_path || value.path || null;
+      const deckPath = typeof effectiveArgs.deck_path === "string" && effectiveArgs.deck_path.trim() ? effectiveArgs.deck_path : null;
+      await applyDeckConsistency(value, { artifactPath, deckPath });
+      await annotateAuditResult(value, {
+        artifactPath,
+        briefPath: null,
+        scopeAnchor: "deck",
+        revision: disciplineSnapshot().revision,
+      });
+    }
     if (action === "status" || action === "capabilities") {
       value.officejs_live = await officeJsStatus(0);
     }
@@ -1476,6 +1504,7 @@ async function handleTool(name, args = {}) {
     powerpoint_new_presentation: "new_presentation",
     powerpoint_inspect: "inspect",
     powerpoint_audit_figure: "audit_figure",
+    powerpoint_audit_deck: "audit_deck",
     powerpoint_activate_slide: "activate_slide",
     powerpoint_refresh: "refresh",
     powerpoint_add_slide: "add_slide",

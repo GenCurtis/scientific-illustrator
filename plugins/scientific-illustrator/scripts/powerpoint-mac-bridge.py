@@ -2407,6 +2407,52 @@ def action_draw_batch(args: dict) -> dict:
         _BATCH_CONTEXT = None
 
 
+def action_audit_deck(args: dict) -> dict:
+    """Cross-slide summary for deck-level consistency review (P4c).
+
+    Returns per-slide font/size/color summaries; the Node side compares them
+    with the deck truth document and the shared style contract. Read-only.
+    """
+    state, path, prs = _load(False)
+    slides = []
+    for index, slide in enumerate(prs.slides, start=1):
+        model = _perceptual_model(prs, slide)
+        fonts: set[str] = set()
+        colors: set[str] = set()
+        max_font_pt = None
+        for element in model.get("elements", []):
+            if not isinstance(element, dict):
+                continue
+            if element.get("font_name"):
+                fonts.add(str(element["font_name"]))
+            if element.get("kind") == "text":
+                if element.get("color"):
+                    colors.add(str(element["color"]))
+                font_pt = element.get("font_pt")
+                if isinstance(font_pt, (int, float)):
+                    max_font_pt = float(font_pt) if max_font_pt is None else max(max_font_pt, float(font_pt))
+            if element.get("fill"):
+                colors.add(str(element["fill"]))
+            if element.get("line"):
+                colors.add(str(element["line"]))
+        slides.append({
+            "index": index,
+            "shape_count": len(slide.shapes),
+            "fonts": sorted(fonts),
+            "colors": sorted(colors),
+            "max_font_pt": max_font_pt,
+        })
+    host_name, _ = _select_host(args)
+    return {
+        "backend": "python-pptx-ooxml+application-reload",
+        "host_application": host_name,
+        "path": str(path),
+        "source_path": state.get("source_path"),
+        "slide_count": len(slides),
+        "slides": slides,
+    }
+
+
 ACTIONS = {
     "status": action_status,
     "capabilities": action_capabilities,
@@ -2414,6 +2460,7 @@ ACTIONS = {
     "new_presentation": action_new_presentation,
     "inspect": action_inspect,
     "audit_figure": action_audit_figure,
+    "audit_deck": action_audit_deck,
     "activate_slide": action_activate_slide,
     "refresh": action_refresh,
     "add_slide": action_add_slide,

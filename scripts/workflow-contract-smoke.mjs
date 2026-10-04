@@ -34,7 +34,7 @@ const skills = {
   "recreate-scientific-figure": await read("plugins/scientific-illustrator/skills/recreate-scientific-figure/SKILL.md"),
 };
 const requiredBySkill = {
-  "audit-scientific-figure": ["figure_brief_read", "figure_plan_read", "figure_kind_get", "truth correctness", "design quality", "publication compliance", "figure_rules_resolve", "applied baseline", "perceptual_qa", "style_deviation", "degraded-compliance"],
+  "audit-scientific-figure": ["figure_brief_read", "figure_plan_read", "figure_kind_get", "truth correctness", "design quality", "publication compliance", "figure_rules_resolve", "applied baseline", "perceptual_qa", "style_deviation", "degraded-compliance", "powerpoint_audit_deck"],
   "correct-scientific-figure": ["figure_brief_read", "figure_plan_read", "regenerated", "brief's truth"],
   "design-scientific-figure": ["figure_profile_get", "figure_kind_get", "figure_style_read", "figure_brief_write", "figure_plan_write", "figure_rules_resolve", "width_mm"],
   "edit-powerpoint-live": [
