@@ -101,6 +101,16 @@ WPS 使用可编辑 PPTX 工作副本，不会假装已经连接任意未保存�
 
 显微照片、复杂纹理等确实无法用形状还原的内容，只会把最小必要区域作为图片插入，其余文字、箭头和边框仍保持可编辑。数学公式请用 `powerpoint_add_equation` 以 LaTeX 插入为原生可编辑的 OMML 矢量公式，不要用纯文本或图片代替（Windows 实时绘制需要安装 Microsoft Word 完成公式转换）。
 
+### 图稿真值与设计智能
+
+新增可落盘的「图稿真值」体系：`figure_brief`（科学真值：逐字文本、claims、量值、歧义与有意偏差）、`figure_style`（论文级配色/字体/线宽与 semantic_styles，保证同一论文的多张配图风格一致）、`figure_plan`（设计计划：图类型、archetype、阅读顺序、render contexts）与 `deck`（幻灯组真值）都以版本化 JSON 落盘，按「显式路径 → 项目 `.scientific-illustrator/` → 输出旁挂」三级发现，带乐观锁与工具托管的修订号。
+
+设计档位覆盖 paper-figure、graphical-abstract、poster、slides 与 diagram；10 种图类型（workflow、mechanism、process、data-plot、network 等）各有语法页，说明语义基元、布局原型、编码约定与常见失败模式。审计输出带稳定 finding id 与 new/persistent/resolved/waived/disputed 状态，跨检查点不会重复报告已接受的问题；未解决的语义歧义在 `publication-ready` 复刻下会显式阻塞，而不是悄悄猜测。
+
+### 出版合规与感知检查
+
+`figure_rules_resolve` 按「用户覆盖 > 会场 > 出版商 > 档位默认」解析官方要求，并给出逐 token 的来源与数据新鲜度（首批 Elsevier、IEEE、ACM、Springer Nature 与 EGU GA 海报）；`figure_alt_text_generate` 从真值与计划生成可审阅的图注草稿，绝不编造内容。OOXML 后端的审计会按 render contexts 检查最终尺寸下的字号、有效 DPI、线宽、对比度、灰度与缩略图可读性，以及样式偏差与色盲风险；幻灯组可用 `powerpoint_audit_deck` 做跨页字体、配色与页数一致性检查（当前限 OOXML/WPS 后端）。
+
 ### 测试与验证
 
 每次更新都会在 Ubuntu、macOS 和 Windows 上运行代码、MCP、Python、PowerShell、路径发现与 OOXML 回归测试。本版另在真实 Mac 上验证了 PowerPoint 精确打开/刷新/关闭、WPS 指定文件打开和 draw.io 实时画布；GitHub 公共测试机没有商业版 PowerPoint/WPS，因此 Windows 的应用内联调必须由安装后的状态工具确认，不能把模拟测试当成实机连接成功。
