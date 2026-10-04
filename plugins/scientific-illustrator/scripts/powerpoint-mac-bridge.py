@@ -34,7 +34,7 @@ from pptx import Presentation
 from pptx.chart.data import CategoryChartData
 from pptx.dml.color import RGBColor
 from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
-from pptx.enum.dml import MSO_LINE_DASH_STYLE
+from pptx.enum.dml import MSO_FILL, MSO_LINE_DASH_STYLE
 from pptx.enum.shapes import MSO_CONNECTOR, MSO_SHAPE, MSO_SHAPE_TYPE
 from pptx.enum.text import MSO_AUTO_SIZE, MSO_VERTICAL_ANCHOR, PP_ALIGN
 from pptx.oxml.xmlchemy import OxmlElement
@@ -1917,6 +1917,101 @@ def _is_route_obstacle(shape, slide_area: float) -> bool:
     return (shape.width * shape.height) / slide_area < 0.18
 
 
+def _perceptual_color(color) -> str | None:
+    try:
+        if color is None or color.type is None:
+            return None
+        return "#" + str(color.rgb)
+    except Exception:
+        return None
+
+
+def _perceptual_fill(shape) -> str | None:
+    try:
+        fill = shape.fill
+        if fill.type == MSO_FILL.SOLID:
+            return _perceptual_color(fill.fore_color)
+    except Exception:
+        return None
+    return None
+
+
+def _perceptual_line_pt(shape):
+    try:
+        width = shape.line.width
+        if width is not None:
+            return width.pt
+    except Exception:
+        return None
+    return None
+
+
+def _perceptual_elements(shapes, out: list) -> None:
+    for shape in shapes:
+        try:
+            if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+                _perceptual_elements(shape.shapes, out)
+                continue
+            entry: dict = {"name": shape.name}
+            if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
+                entry["kind"] = "picture"
+                try:
+                    pixel_width, pixel_height = shape.image.size
+                    entry["pixel_width"] = int(pixel_width)
+                    entry["pixel_height"] = int(pixel_height)
+                except Exception:
+                    pass
+                entry["placed_width_pt"] = shape.width.pt
+                entry["placed_height_pt"] = shape.height.pt
+            elif getattr(shape, "has_text_frame", False) and shape.text.strip():
+                entry["kind"] = "text"
+                font_pt = None
+                font_name = None
+                color = None
+                for paragraph in shape.text_frame.paragraphs:
+                    for run in paragraph.runs:
+                        if font_pt is None and run.font.size is not None:
+                            font_pt = run.font.size.pt
+                        if font_name is None and run.font.name:
+                            font_name = run.font.name
+                        if color is None:
+                            color = _perceptual_color(run.font.color)
+                if font_pt is not None:
+                    entry["font_pt"] = font_pt
+                if font_name:
+                    entry["font_name"] = font_name
+                if color:
+                    entry["color"] = color
+                fill = _perceptual_fill(shape)
+                if fill:
+                    entry["fill"] = fill
+                entry["text_length"] = len(shape.text)
+            else:
+                entry["kind"] = "line" if shape.shape_type == MSO_SHAPE_TYPE.LINE else "shape"
+                line_pt = _perceptual_line_pt(shape)
+                if line_pt is not None:
+                    entry["line_pt"] = line_pt
+                fill = _perceptual_fill(shape)
+                if fill:
+                    entry["fill"] = fill
+                line = _perceptual_color(getattr(shape.line, "color", None))
+                if line:
+                    entry["line"] = line
+            out.append(entry)
+        except Exception:
+            continue
+
+
+def _perceptual_model(prs, slide) -> dict:
+    elements: list = []
+    _perceptual_elements(slide.shapes, elements)
+    return {
+        "schema": "scientific-illustrator/perceptual-model@1",
+        "canvas": {"width_pt": prs.slide_width.pt, "height_pt": prs.slide_height.pt},
+        "elements": elements,
+    }
+
+
 def action_audit_figure(args: dict) -> dict:
     state, path, prs = _load(False)
     index = int(args["slide_index"])
@@ -2047,6 +2142,7 @@ def action_audit_figure(args: dict) -> dict:
         "host_application": state.get("host_application", "auto"),
         "shape_count": len(slide.shapes),
         "findings": findings,
+        "perceptual_model": _perceptual_model(prs, slide),
         "hard_failure_count": hard_count,
         "warning_count": len(findings) - hard_count,
         "passed_deterministic_gate": hard_count == 0,

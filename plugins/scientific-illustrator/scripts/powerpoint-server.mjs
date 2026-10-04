@@ -10,6 +10,7 @@ import { promisify } from "node:util";
 import { getOfficeJsBridge } from "./officejs-bridge.mjs";
 import { planReconstruction, reconstructionPlanTool } from "./adaptive-planner.mjs";
 import { annotateAuditResult } from "./findings-ledger.mjs";
+import { applyPerceptualQa } from "./perceptual-audit.mjs";
 import { VERSION as SERVER_VERSION, assertAllowedRealPath, atomicWrite } from "./guardrails.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -314,14 +315,16 @@ const tools = [
   },
   {
     name: "powerpoint_audit_figure",
-    description: "Run a deterministic geometry, connector, text-fit, repeated-layout, and raster editability audit on one slide. Returns named hard failures and correction-oriented findings with stable finding ids, a new/persistent/resolved attribution status from the findings ledger, and waived/disputed statuses when the figure brief declares intentional deviations or user-approved disputes; it does not modify the presentation. The result carries `summary`, `brief_applied`, `ledger_applied`, and a `discipline` block so repeated unchanged audits and review debt are measurable.",
+    description: "Run a deterministic geometry, connector, text-fit, repeated-layout, raster editability, and perceptual QA audit on one slide. Returns named hard failures and correction-oriented findings with stable finding ids, a new/persistent/resolved attribution status from the findings ledger, and waived/disputed statuses when the figure brief declares intentional deviations or user-approved disputes; it does not modify the presentation. When the backend provides a perceptual model, the OOXML backend does, checks run at the delivery sizes declared by the design plan's render_contexts (font scale, effective DPI, line weight, contrast, grayscale, thumbnail) using the resolved publication rules; the result then carries `perceptual_qa`, `publisher_spec`, `summary`, `brief_applied`, `ledger_applied`, and a `discipline` block so repeated unchanged audits and review debt are measurable.",
     inputSchema: {
       type: "object",
       required: ["slide_index"],
       properties: {
         slide_index: { type: "integer", minimum: 1 },
-        artifact_path: { type: "string", description: "Absolute path of the presentation artifact used to locate the findings ledger and the figure brief. Optional; defaults to the file reported by the active backend when it exposes one, so Office.js sessions should pass it explicitly." },
-        brief_path: { type: "string", description: "Absolute path of the figure brief whose intentional deviations and disputes should be applied to this audit. Optional; defaults to the brief resolved from artifact_path." },
+        artifact_path: { type: "string", description: "Absolute path of the presentation artifact used to locate the findings ledger, the figure brief, and the design plan. Optional; defaults to the file reported by the active backend when it exposes one, so Office.js sessions should pass it explicitly." },
+        brief_path: { type: "string", description: "Absolute path of the figure brief whose intentional deviations, disputes, profile, and recreation policy should be applied to this audit. Optional; defaults to the brief resolved from artifact_path." },
+        publisher: { type: "string", description: "Optional publisher baseline id (acm, elsevier, ieee, springer-nature) whose resolved thresholds drive the perceptual QA checks. Unknown values degrade with a publisher_spec.applied=false reason instead of failing." },
+        raster_class: { type: "string", description: "Optional raster class used to select publisher DPI thresholds, for example halftone, combination, line_art, color_grayscale, or bw_line_art. Falls back to the profile minimum resolution when omitted or unknown." },
         alignment_tolerance: { type: "number", minimum: 0.05, maximum: 50, default: 0.75 },
         endpoint_clearance: { type: "number", minimum: 0, maximum: 100, default: 1.5 },
         text_overflow_tolerance: { type: "number", minimum: 0, maximum: 50, default: 1.5 },
@@ -1195,9 +1198,16 @@ async function runBridge(action, args = {}, forcedBackend = null) {
       const explicitArtifact =
         typeof effectiveArgs.artifact_path === "string" && effectiveArgs.artifact_path.trim() ? effectiveArgs.artifact_path : null;
       const artifactPath = explicitArtifact || value.source_path || value.presentation_path || value.path || null;
+      const briefPath = typeof effectiveArgs.brief_path === "string" && effectiveArgs.brief_path.trim() ? effectiveArgs.brief_path : null;
+      await applyPerceptualQa(value, {
+        artifactPath,
+        briefPath,
+        publisher: typeof effectiveArgs.publisher === "string" ? effectiveArgs.publisher : null,
+        rasterClass: typeof effectiveArgs.raster_class === "string" ? effectiveArgs.raster_class : null,
+      });
       await annotateAuditResult(value, {
         artifactPath,
-        briefPath: typeof effectiveArgs.brief_path === "string" && effectiveArgs.brief_path.trim() ? effectiveArgs.brief_path : null,
+        briefPath,
         scopeAnchor: `slide:${Number(value.slide_index ?? effectiveArgs.slide_index ?? 1)}`,
         revision: disciplineSnapshot().revision,
       });
