@@ -14,7 +14,8 @@ GitHub：[@GenCurtis](https://github.com/GenCurtis)
 
 按你使用的 Agent 环境选择安装方式。
 
-### Codex
+<details>
+<summary><strong>Codex</strong></summary>
 
 把下面这段话完整发送给 Codex：
 
@@ -49,17 +50,28 @@ codex plugin add scientific-illustrator@scientific-illustrator-tools
 
 安装或更新后，重启 Codex 并新建任务。
 
-### OpenCode
+</details>
+
+<details>
+<summary><strong>OpenCode</strong></summary>
 
 参见 [OpenCode 使用指南](docs/opencode.md)：克隆仓库，按 `opencode.json.example` 把三个 MCP server 注册进 `opencode.json`，并把技能放到 OpenCode 的发现路径。
 
-### Google Antigravity
+</details>
+
+<details>
+<summary><strong>Google Antigravity</strong></summary>
 
 参见 [Antigravity 使用指南](docs/antigravity.md)：克隆仓库，按 `mcp_config.json.example` 注册 MCP server，并把技能目录加入工作区。
 
-### 其他 Agent 环境
+</details>
 
-任何支持 Agent Skills 标准并提供本地 MCP server 的环境都可以接入：技能位于 `plugins/scientific-illustrator/skills/`，MCP 定义见 `plugins/scientific-illustrator/.mcp.json`，可参考上面两个示例配置。
+<details>
+<summary><strong>其他 Agent 环境</strong></summary>
+
+任何支持 Agent Skills 标准并提供本地 MCP server 的环境都可以接入：技能位于 `plugins/scientific-illustrator/skills/`，MCP 定义见 `plugins/scientific-illustrator/.mcp.json`，可参考仓库根目录的两个示例配置。
+
+</details>
 
 ## 第一次使用：只需 3 步
 
@@ -75,7 +87,21 @@ codex plugin add scientific-illustrator@scientific-illustrator-tools
 | WPS 演示 | 支持 | 支持 | 绘制为可编辑 PPTX 工作副本；默认按检查点后台刷新，不会持续抢占窗口 |
 | draw.io Desktop | 支持 | 支持 | 直接控制 draw.io 画布，保存可编辑 .drawio 并导出预览图 |
 
-默认情况下，PowerPoint 和 WPS 会在后台绘制，你可以继续使用电脑。新启动的 PowerPoint 窗口会在后台最小化打开，图表数据用的 Excel 窗口也会隐藏，不再弹到前台。绘制默认使用零人工等待的有界批量：Windows COM 与 OOXML 都是「一批一进程」，OOXML 每批只读写一次文件；简单重复对象批量复用，复杂模块才定点检查修正。每次 inspect/audit/渲染都会返回 `discipline` 计数器（内容修订号、重复审查计数、未审查债务），重复检查未变更内容会被明确标记，改动后未复审也会显示为 review debt；未渲染的改动累计超过阈值时，变更结果会附带 `review_reminder` 检查点提醒。WPS 使用可编辑 PPTX 工作副本，不会假装已经连接任意未保存的当前窗口；macOS 会验证文件是否真的由 WPS 打开，Windows 无法验证时会明确显示“未知”。draw.io 不认识的图形名会直接报错，不会悄悄退化成矩形。显微照片、复杂纹理等确实无法用形状还原的内容，只会把最小必要区域作为图片插入，其余文字、箭头和边框仍保持可编辑。数学公式请用 `powerpoint_add_equation` 以 LaTeX 插入为原生可编辑的 OMML 矢量公式，不要用纯文本或图片代替（Windows 实时绘制需要安装 Microsoft Word 完成公式转换）。
+### 后台绘制与批量
+
+默认情况下，PowerPoint 和 WPS 会在后台绘制，你可以继续使用电脑。新启动的 PowerPoint 窗口会在后台最小化打开，图表数据用的 Excel 窗口也会隐藏，不再弹到前台。绘制默认使用零人工等待的有界批量：Windows COM 与 OOXML 都是「一批一进程」，OOXML 每批只读写一次文件；简单重复对象批量复用，复杂模块才定点检查修正。
+
+### 会话纪律
+
+每次 inspect/audit/渲染都会返回 `discipline` 计数器（内容修订号、重复审查计数、未审查债务）。重复检查未变更内容会被明确标记，改动后未复审也会显示为 review debt；未渲染的改动累计超过阈值时，变更结果会附带 `review_reminder` 检查点提醒。
+
+### 状态与可编辑性
+
+WPS 使用可编辑 PPTX 工作副本，不会假装已经连接任意未保存的当前窗口；macOS 会验证文件是否真的由 WPS 打开，Windows 无法验证时会明确显示“未知”。draw.io 不认识的图形名会直接报错，不会悄悄退化成矩形。
+
+显微照片、复杂纹理等确实无法用形状还原的内容，只会把最小必要区域作为图片插入，其余文字、箭头和边框仍保持可编辑。数学公式请用 `powerpoint_add_equation` 以 LaTeX 插入为原生可编辑的 OMML 矢量公式，不要用纯文本或图片代替（Windows 实时绘制需要安装 Microsoft Word 完成公式转换）。
+
+### 测试与验证
 
 每次更新都会在 Ubuntu、macOS 和 Windows 上运行代码、MCP、Python、PowerShell、路径发现与 OOXML 回归测试。本版另在真实 Mac 上验证了 PowerPoint 精确打开/刷新/关闭、WPS 指定文件打开和 draw.io 实时画布；GitHub 公共测试机没有商业版 PowerPoint/WPS，因此 Windows 的应用内联调必须由安装后的状态工具确认，不能把模拟测试当成实机连接成功。
 
@@ -85,7 +111,8 @@ codex plugin add scientific-illustrator@scientific-illustrator-tools
 
 > **Codex 用户**：在提示词最前面加上一行 `[@scientific-illustrator](plugin://scientific-illustrator@scientific-illustrator-tools)`，或直接在输入框的插件菜单中选择 **Scientific Illustrator**，确保插件被调用。其他 Agent 环境直接发送下面的提示词正文即可。
 
-### 使用 Microsoft PowerPoint
+<details>
+<summary><strong>使用 Microsoft PowerPoint</strong></summary>
 
 先打开 PowerPoint 并上传参考图，然后复制：
 
@@ -99,7 +126,10 @@ codex plugin add scientific-illustrator@scientific-illustrator-tools
 完成后做全图对比检查，保存 PPTX 并导出最终预览图。
 ~~~
 
-### 使用 WPS 演示
+</details>
+
+<details>
+<summary><strong>使用 WPS 演示</strong></summary>
 
 先打开 WPS 演示并上传参考图，然后复制：
 
@@ -114,7 +144,10 @@ codex plugin add scientific-illustrator@scientific-illustrator-tools
 完成后做全图对比检查，保存 PPTX 并导出最终预览图。
 ~~~
 
-### 使用 draw.io
+</details>
+
+<details>
+<summary><strong>使用 draw.io</strong></summary>
 
 先安装并打开 [draw.io Desktop](https://www.drawio.com/)，上传参考图，然后复制：
 
@@ -125,6 +158,8 @@ codex plugin add scientific-illustrator@scientific-illustrator-tools
 按区域逐步绘制，每完成一个区域就检查结构和画布截图，有问题先修正再继续。
 完成后做全图对比检查，保存可编辑 .drawio，并导出宽度为 2000 px 的 PNG 预览图。
 ~~~
+
+</details>
 
 如果想让 PowerPoint 或 WPS 一直显示在最前面观看绘制过程，在提示词最后加一句：
 
