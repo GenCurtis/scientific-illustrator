@@ -12,6 +12,7 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { BRIEF_SCHEMA_VERSION, writeFigureBrief } from "../plugins/scientific-illustrator/scripts/figure-truth.mjs";
 import { PLAN_SCHEMA_VERSION, writeFigurePlan } from "../plugins/scientific-illustrator/scripts/figure-plan.mjs";
+import { STYLE_SCHEMA_VERSION, writeFigureStyle } from "../plugins/scientific-illustrator/scripts/figure-style.mjs";
 import { applyPerceptualQa } from "../plugins/scientific-illustrator/scripts/perceptual-audit.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -197,6 +198,50 @@ await check("an unreadable plan surfaces a warning instead of silence", async ()
   assert.equal(result.warnings.some((warning) => warning.includes("design plan could not be read")), true);
 });
 
+await check("style contracts produce style_deviation findings", async () => {
+  const directory = path.join(tempRoot, "module-style");
+  const briefPath = await writeBriefAndPlan(directory);
+  await writeFigureStyle({
+    artifactPath: briefPath,
+    styleId: "main",
+    document: { schema: STYLE_SCHEMA_VERSION, style_id: "main", fonts: { family: "Arial" }, enforce: "advisory" },
+  });
+  const value = makeAudit(makeModel([{ name: "Tiny", kind: "text", font_pt: 5, font_name: "Comic Sans MS", color: "#222222" }]));
+  const result = await applyPerceptualQa(value, { briefPath });
+  assert.equal(result.applied, true);
+  assert.equal(result.style_applied.revision, 0);
+  const deviation = value.findings.find((finding) => finding.category === "style_deviation");
+  assert.ok(deviation);
+  assert.equal(deviation.token, "fonts.family");
+  assert.equal(deviation.expected, "Arial");
+  assert.equal(deviation.actual, "Comic Sans MS");
+  assert.equal(deviation.severity, "warning");
+});
+
+await check("a brief style_id selects the matching style file", async () => {
+  const directory = path.join(tempRoot, "module-style-id");
+  const briefPath = await writeBriefAndPlan(directory, { style_id: "custom" });
+  await writeFigureStyle({
+    artifactPath: briefPath,
+    styleId: "custom",
+    document: { schema: STYLE_SCHEMA_VERSION, style_id: "custom", fonts: { family: "Arial" } },
+  });
+  const value = makeAudit(makeModel([{ name: "T", kind: "text", font_pt: 18, font_name: "Comic Sans MS" }]));
+  const result = await applyPerceptualQa(value, { briefPath });
+  assert.equal(result.style_applied.revision, 0);
+  assert.equal(value.findings.some((finding) => finding.category === "style_deviation" && finding.actual === "Comic Sans MS"), true);
+});
+
+await check("an unreadable style surfaces a warning instead of silence", async () => {
+  const directory = path.join(tempRoot, "module-corrupt-style");
+  const briefPath = await writeBriefAndPlan(directory);
+  await fs.writeFile(path.join(directory, "main.si-style.json"), "{not json", "utf8");
+  const value = makeAudit(makeModel([{ name: "Note", kind: "text", font_pt: 5, color: "#222222" }]));
+  const result = await applyPerceptualQa(value, { briefPath });
+  assert.equal(result.applied, true);
+  assert.equal(result.warnings.some((warning) => warning.includes("figure style could not be read")), true);
+});
+
 function makeBmpBuffer(width, height) {
   const rowSize = Math.ceil((width * 3) / 4) * 4;
   const pixelBytes = rowSize * height;
@@ -271,6 +316,11 @@ async function call(name, args = {}) {
 await request("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "perceptual-audit-smoke", version: "0" } });
 
 const e2eBriefPath = await writeBriefAndPlan(e2eDir);
+await writeFigureStyle({
+  artifactPath: path.join(stateDir, "deck.pptx"),
+  styleId: "main",
+  document: { schema: STYLE_SCHEMA_VERSION, style_id: "main", fonts: { family: "Arial" }, enforce: "hard" },
+});
 await call("powerpoint_new_presentation", {});
 await call("powerpoint_add_textbox", {
   slide_index: 1,
@@ -281,6 +331,7 @@ await call("powerpoint_add_textbox", {
   width: 240,
   height: 60,
   font_size: 5,
+  font_name: "Comic Sans MS",
   font_color: "#666666",
 });
 const imagePath = path.join(e2eDir, "dot.bmp");
@@ -324,6 +375,13 @@ await check("OOXML audit emits and evaluates a perceptual model through MCP", as
   assert.deepEqual(audit.perceptual_qa.model.pictures, [
     { name: "Micrograph", pixel_width: 1, pixel_height: 900, placed_width_pt: 200, placed_height_pt: 200 },
   ]);
+  const deviation = audit.findings.find((finding) => finding.category === "style_deviation");
+  assert.equal(deviation.severity, "hard");
+  assert.equal(deviation.token, "fonts.family");
+  assert.equal(deviation.expected, "Arial");
+  assert.equal(deviation.actual, "Comic Sans MS");
+  assert.equal(audit.perceptual_qa.style_applied.revision, 0);
+  assert.equal(audit.passed_deterministic_gate, false);
   assert.equal(audit.perceptual_qa.findings_added >= 2, true);
   assert.equal("perceptual_model" in audit, false);
 });
@@ -336,7 +394,7 @@ await check("MCP perceptual findings respect brief waivers", async () => {
       schema: BRIEF_SCHEMA_VERSION,
       figure_id: "fig",
       profile: "paper-figure",
-      recreation_policy: "publication-ready",
+      recreation_policy: "faithful",
       inventory: [{ id: "t1", kind: "text", text_verbatim: "Tiny" }],
       intentional_deviations: [
         { item: "TinyNote", category: "font_size_below_minimum", reason: "legacy caption kept from the reference figure", approved_by: "user" },
@@ -349,6 +407,10 @@ await check("MCP perceptual findings respect brief waivers", async () => {
   assert.equal(waived.waive_ref, "TinyNote");
   assert.equal(audit.summary.waived >= 1, true);
   assert.equal(audit.brief_applied.revision, 1);
+  const downgraded = audit.findings.find((finding) => finding.category === "style_deviation");
+  assert.equal(downgraded.severity, "warning");
+  assert.equal(downgraded.policy_downgraded, true);
+  assert.equal(audit.passed_deterministic_gate, true);
 });
 
 lines.close();

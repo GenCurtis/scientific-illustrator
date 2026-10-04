@@ -8,6 +8,7 @@
 // filesystem and resolver wiring.
 import { readFigureBrief } from "./figure-truth.mjs";
 import { readFigurePlan } from "./figure-plan.mjs";
+import { readFigureStyle } from "./figure-style.mjs";
 import { resolveFigureRules } from "./publication-compliance.mjs";
 import { evaluatePerceptualQa } from "./perceptual-qa.mjs";
 
@@ -85,6 +86,20 @@ export async function applyPerceptualQa(auditValue, { artifactPath = null, brief
     const styleId = trimmedString(brief?.style_id);
     const figureKind = trimmedString(plan?.figure_kind);
     const contexts = Array.isArray(plan?.render_contexts) ? plan.render_contexts : [];
+    let style = null;
+    let styleApplied = null;
+    const styleAnchor = trimmedString(artifactPath) ? artifactPath : trimmedString(briefPath) ? briefPath : null;
+    if (styleAnchor) {
+      try {
+        const read = await readFigureStyle({ artifactPath: styleAnchor, styleId });
+        if (read.exists) {
+          style = read.document;
+          styleApplied = { path: read.resolved_path, revision: read.revision };
+        }
+      } catch (error) {
+        warnings.push(`the figure style could not be read: ${error.message}`);
+      }
+    }
     let rules = {};
     let publisherSpec = null;
     if (profile) {
@@ -111,18 +126,14 @@ export async function applyPerceptualQa(auditValue, { artifactPath = null, brief
       model,
       contexts,
       rules,
+      style,
       policy: trimmedString(brief?.recreation_policy) ?? "unspecified",
       options: { raster_class: normalizedRasterClass },
     });
-    const mapped = evaluation.findings.map((finding) => ({
-      severity: finding.severity,
-      category: finding.category,
-      shape_name: finding.objects[0] ?? "figure",
-      message: finding.evidence,
-      correction: finding.correction,
-      acceptance: finding.acceptance,
-      ...(finding.context ? { context: finding.context } : {}),
-      ...(finding.rule_token ? { rule_token: finding.rule_token } : {}),
+    const mapped = evaluation.findings.map(({ objects, evidence, ...rest }) => ({
+      ...rest,
+      shape_name: objects[0] ?? "figure",
+      message: evidence,
     }));
     if (mapped.length > 0) {
       auditValue.findings = Array.isArray(auditValue.findings) ? [...auditValue.findings, ...mapped] : mapped;
@@ -137,6 +148,7 @@ export async function applyPerceptualQa(auditValue, { artifactPath = null, brief
       model: modelSummary,
       policy: evaluation.policy,
       brief_applied: briefApplied,
+      style_applied: styleApplied,
       plan_applied: plan ? { figure_kind: figureKind, render_contexts: contexts.length } : null,
       contexts: evaluation.contexts,
       invalid_contexts: evaluation.invalid_contexts,

@@ -101,6 +101,36 @@ export function grayscaleLuminance(hex) {
   return 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b;
 }
 
+function normalizeHex(value) {
+  const match = typeof value === "string" ? /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(value.trim()) : null;
+  if (!match) return null;
+  let hex = match[1].toLowerCase();
+  if (hex.length === 3) {
+    hex = hex
+      .split("")
+      .map((channel) => channel + channel)
+      .join("");
+  }
+  return `#${hex}`;
+}
+
+function collectHexColors(value, out, depth = 0) {
+  if (depth > 4 || value === null || value === undefined) return out;
+  if (typeof value === "string") {
+    const hex = normalizeHex(value);
+    if (hex) out.add(hex);
+    return out;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectHexColors(item, out, depth + 1);
+    return out;
+  }
+  if (isPlainObject(value)) {
+    for (const item of Object.values(value)) collectHexColors(item, out, depth + 1);
+  }
+  return out;
+}
+
 // Rules arrive either as resolved entries ({ value, source, ... }) or as raw
 // token values; both shapes are accepted so tests and callers stay simple.
 export function readRuleToken(rules, token) {
@@ -149,13 +179,15 @@ function normalizeModel(model) {
   };
 }
 
-function makeFinding(category, objects, { severity, context, rule_token, evidence, correction, acceptance }) {
+function makeFinding(category, objects, details) {
+  const { severity, context, rule_token, evidence, correction, acceptance, ...extra } = details;
   return {
     category,
     severity,
     objects: objects.map((name) => String(name)),
     ...(context ? { context } : {}),
     ...(rule_token ? { rule_token } : {}),
+    ...extra,
     evidence,
     correction,
     acceptance,
@@ -371,6 +403,123 @@ function checkThumbnail({ normalized, context, scale, opts, findings, severity }
   }
 }
 
+function checkStyleDeviation({ normalized, style, findings }) {
+  if (!isPlainObject(style)) return;
+  const styleSeverity = style.enforce === "hard" ? "hard" : "warning";
+  const declaredFamilies = [];
+  if (isNonEmptyString(style.fonts?.family)) declaredFamilies.push(style.fonts.family.trim());
+  if (Array.isArray(style.fonts?.fallbacks)) {
+    for (const item of style.fonts.fallbacks) {
+      if (isNonEmptyString(item)) declaredFamilies.push(item.trim());
+    }
+  }
+  const familiesLower = declaredFamilies.map((item) => item.toLowerCase());
+  const declaredStroke =
+    typeof style.lines?.stroke_pt === "number" && Number.isFinite(style.lines.stroke_pt) && style.lines.stroke_pt > 0
+      ? style.lines.stroke_pt
+      : null;
+  const declaredColors = collectHexColors(style.palette, new Set());
+  collectHexColors(style.semantic_styles, declaredColors);
+  const colorWhitelist = new Set(["#ffffff", "#000000"]);
+  const reportedColors = new Set();
+  for (const element of normalized.elements) {
+    const name = String(element.name ?? "unnamed");
+    if (element.kind === "text" && declaredFamilies.length > 0 && isNonEmptyString(element.font_name)) {
+      const actual = element.font_name.trim();
+      if (!familiesLower.includes(actual.toLowerCase())) {
+        findings.push(
+          makeFinding("style_deviation", [name], {
+            severity: styleSeverity,
+            token: "fonts.family",
+            expected: declaredFamilies[0],
+            actual,
+            evidence: `"${name}" uses font "${actual}" while the manuscript style declares ${declaredFamilies.join(", ")}.`,
+            correction: "Switch to a declared style font, or record a brief style_override with a reason.",
+            acceptance: `Fonts match the manuscript style (${declaredFamilies.join(", ")}).`,
+          })
+        );
+      }
+    }
+    if ((element.kind === "shape" || element.kind === "line") && declaredStroke !== null) {
+      const linePt = Number(element.line_pt);
+      if (Number.isFinite(linePt) && linePt > 0 && Math.abs(linePt - declaredStroke) > 0.01) {
+        findings.push(
+          makeFinding("style_deviation", [name], {
+            severity: styleSeverity,
+            token: "lines.stroke_pt",
+            expected: declaredStroke,
+            actual: round(linePt, 3),
+            evidence: `"${name}" strokes at ${round(linePt, 3)}pt while the manuscript style declares ${declaredStroke}pt.`,
+            correction: "Match the declared stroke width, or record a brief style_override with a reason.",
+            acceptance: `Stroke widths match the manuscript style (${declaredStroke}pt).`,
+          })
+        );
+      }
+    }
+    if (declaredColors.size > 0) {
+      for (const color of [element.fill, element.color, element.line]) {
+        const hex = normalizeHex(color);
+        if (!hex || colorWhitelist.has(hex) || declaredColors.has(hex) || reportedColors.has(hex)) continue;
+        reportedColors.add(hex);
+        findings.push(
+          makeFinding("style_deviation", [name], {
+            severity: styleSeverity,
+            token: "palette",
+            expected: "declared palette",
+            actual: hex,
+            evidence: `"${name}" uses ${hex}, which is not part of the manuscript palette.`,
+            correction: "Use a declared palette color, or record a brief style_override with a reason.",
+            acceptance: "Figure colors stay inside the declared manuscript palette.",
+          })
+        );
+      }
+    }
+  }
+}
+
+function checkColorBlindRisk({ normalized, rules, opts, findings, severity }) {
+  const enabledByRule = readRuleToken(rules, "accessibility.non_color_encoding") === true;
+  const enabledByOption = opts.color_blind_check === true;
+  if (!enabledByRule && !enabledByOption) return;
+  const threshold =
+    typeof opts.color_blind_min_luminance_delta === "number" &&
+    Number.isFinite(opts.color_blind_min_luminance_delta) &&
+    opts.color_blind_min_luminance_delta >= 0
+      ? opts.color_blind_min_luminance_delta
+      : 40;
+  const entries = new Map();
+  for (const element of normalized.elements) {
+    if (element.kind !== "shape" && element.kind !== "text") continue;
+    const rgb = parseHexColor(element.fill);
+    if (!rgb) continue;
+    const key = normalizeHex(element.fill);
+    if (!entries.has(key)) entries.set(key, { rgb, luminance: grayscaleLuminance(element.fill), names: [] });
+    entries.get(key).names.push(String(element.name ?? "unnamed"));
+  }
+  const list = [...entries.entries()];
+  let pairs = 0;
+  for (let first = 0; first < list.length && pairs < MAX_GRAYSCALE_PAIRS; first += 1) {
+    for (let second = first + 1; second < list.length && pairs < MAX_GRAYSCALE_PAIRS; second += 1) {
+      const [hexA, entryA] = list[first];
+      const [hexB, entryB] = list[second];
+      const redGreenPair =
+        (entryA.rgb.r > entryA.rgb.g && entryB.rgb.g > entryB.rgb.r) || (entryB.rgb.r > entryB.rgb.g && entryA.rgb.g > entryA.rgb.r);
+      if (!redGreenPair) continue;
+      if (Math.abs(entryA.luminance - entryB.luminance) >= threshold) continue;
+      pairs += 1;
+      findings.push(
+        makeFinding("color_blind_risk", [...entryA.names.slice(0, 3), ...entryB.names.slice(0, 3)], {
+          severity,
+          rule_token: "accessibility.non_color_encoding",
+          evidence: `Fills ${hexA} and ${hexB} rely on a red/green distinction with similar luminance; they may be indistinguishable for red-green color vision deficiency.`,
+          correction: "Add a non-color encoding (shape, pattern, or dash style), or separate the luminance.",
+          acceptance: "Red/green distinctions carry a non-color encoding or sufficient luminance separation.",
+        })
+      );
+    }
+  }
+}
+
 function applyPolicy(findings, policy) {
   if (policy !== "faithful") return findings;
   return findings.map((finding) =>
@@ -387,7 +536,7 @@ function countSeverities(findings) {
   return counts;
 }
 
-export function evaluatePerceptualQa({ model, contexts = [], rules = {}, policy = "unspecified", options = {} } = {}) {
+export function evaluatePerceptualQa({ model, contexts = [], rules = {}, style = null, policy = "unspecified", options = {} } = {}) {
   const normalized = normalizeModel(model);
   const base = { model_schema: null, policy, contexts: [], invalid_contexts: [], findings: [], counts: { hard: 0, warning: 0 }, truncated: false };
   if (normalized.error) return { ...base, error: normalized.error };
@@ -436,6 +585,8 @@ export function evaluatePerceptualQa({ model, contexts = [], rules = {}, policy 
   }
   checkContrast({ normalized, rules, findings, severity });
   checkGrayscale({ normalized, rules, opts, findings, severity });
+  checkStyleDeviation({ normalized, style, findings });
+  checkColorBlindRisk({ normalized, rules, opts, findings, severity });
   const capped = findings.slice(0, maxFindings);
   const finalFindings = applyPolicy(capped, policy);
   return {

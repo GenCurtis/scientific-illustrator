@@ -53,7 +53,7 @@ Prefer one clear reading path: left-to-right, top-to-bottom, or an explicitly la
 
 ## Record the design plan
 
-Persist the layout decisions with `figure_plan_write` as a `design-plan`: figure kind, archetype, reading order, primary claims, the encoding map (scientific identity to visual mapping), hierarchy, layout constraints, and render contexts. The plan is regenerable and carries no truth; claims, exact text, and units live in the brief only.
+Persist the layout decisions with `figure_plan_write` as a `design-plan`: figure kind, archetype, reading order, primary claims, the encoding map (scientific identity to visual mapping), hierarchy, layout constraints, and render contexts. Give each render context a target size (`width_mm` for print, `width_px` for screen and thumbnail) so perceptual checks evaluate at the real delivery size. The plan is regenerable and carries no truth; claims, exact text, and units live in the brief only.
 
 ## Design connectors
 

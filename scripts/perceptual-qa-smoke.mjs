@@ -374,6 +374,164 @@ await check("grayscale checks run only when the rule or option enables them", as
   assert.equal(categories(ok).includes("grayscale_indistinguishable"), false);
 });
 
+await check("style deviations report token, expected, and actual", async () => {
+  const style = {
+    schema: "scientific-illustrator/style@1",
+    style_id: "main",
+    fonts: { family: "Arial", fallbacks: ["Helvetica"] },
+    lines: { stroke_pt: 0.75 },
+    palette: { primary: "#2166AC", categorical: ["#1B7837", "#762A83"] },
+    semantic_styles: { control: { color: "#123456" } },
+  };
+  const model = makeModel({
+    elements: [
+      { name: "Title", kind: "text", font_pt: 18, font_name: "Comic Sans MS", color: "#222222" },
+      { name: "TitleClone", kind: "text", font_pt: 18, font_name: "Comic Sans MS", color: "#222222" },
+      { name: "Box", kind: "shape", line_pt: 2, fill: "#FF00FF" },
+      { name: "Ok", kind: "shape", line_pt: 0.75, fill: "#2166AC" },
+      { name: "Background", kind: "shape", line_pt: 0.75, fill: "#FFFFFF" },
+      { name: "Control", kind: "shape", line_pt: 0.75, fill: "#123456" },
+      { name: "TolLow", kind: "shape", line_pt: 0.7599, fill: "#2166AC" },
+      { name: "TolHigh", kind: "shape", line_pt: 0.8, fill: "#2166AC" },
+    ],
+  });
+  const result = evaluatePerceptualQa({ model, contexts: [], rules: {}, style });
+  const findings = result.findings.filter((finding) => finding.category === "style_deviation");
+  const font = findings.find((finding) => finding.token === "fonts.family");
+  assert.equal(font.expected, "Arial");
+  assert.equal(font.actual, "Comic Sans MS");
+  assert.equal(font.severity, "warning");
+  assert.deepEqual(font.objects, ["Title"]);
+  const stroke = findings.find((finding) => finding.token === "lines.stroke_pt");
+  assert.equal(stroke.expected, 0.75);
+  assert.equal(stroke.actual, 2);
+  assert.equal(findings.some((finding) => finding.token === "palette" && finding.actual === "#ff00ff"), true);
+  assert.equal(findings.filter((finding) => finding.token === "palette" && finding.actual === "#222222").length, 1);
+  assert.equal(findings.some((finding) => finding.token === "palette" && finding.actual === "#ffffff"), false);
+  assert.equal(findings.some((finding) => finding.token === "palette" && finding.actual === "#123456"), false);
+  assert.equal(findings.some((finding) => finding.token === "lines.stroke_pt" && finding.objects.includes("TolHigh")), true);
+  assert.equal(findings.some((finding) => finding.token === "lines.stroke_pt" && finding.objects.includes("TolLow")), false);
+  assert.equal(findings.some((finding) => finding.objects.includes("Ok")), false);
+});
+
+await check("style fonts match case-insensitively and accept fallbacks", async () => {
+  const style = { schema: "scientific-illustrator/style@1", style_id: "main", fonts: { family: "Arial", fallbacks: ["Helvetica"] } };
+  for (const fontName of ["Arial", "helvetica", "HELVETICA"]) {
+    const model = makeModel({ elements: [{ name: "T", kind: "text", font_pt: 18, font_name: fontName }] });
+    const result = evaluatePerceptualQa({ model, contexts: [], rules: {}, style });
+    assert.equal(result.findings.some((finding) => finding.category === "style_deviation"), false, `${fontName} should match`);
+  }
+  const unknown = evaluatePerceptualQa({
+    model: makeModel({ elements: [{ name: "T", kind: "text", font_pt: 18, font_name: "Papyrus" }] }),
+    contexts: [],
+    rules: {},
+    style,
+  });
+  assert.equal(unknown.findings.some((finding) => finding.category === "style_deviation"), true);
+});
+
+await check("style enforce hard escalates and faithful recreation downgrades", async () => {
+  const style = { schema: "scientific-illustrator/style@1", style_id: "main", fonts: { family: "Arial" }, enforce: "hard" };
+  const model = makeModel({ elements: [{ name: "T", kind: "text", font_pt: 18, font_name: "Comic Sans MS" }] });
+  const hard = evaluatePerceptualQa({ model, contexts: [], rules: {}, style });
+  assert.equal(hard.findings.find((finding) => finding.category === "style_deviation").severity, "hard");
+  const faithful = evaluatePerceptualQa({ model, contexts: [], rules: {}, style, policy: "faithful" });
+  const downgraded = faithful.findings.find((finding) => finding.category === "style_deviation");
+  assert.equal(downgraded.severity, "warning");
+  assert.equal(downgraded.policy_downgraded, true);
+});
+
+await check("style checks stay silent when the contract omits a block", async () => {
+  const bare = { schema: "scientific-illustrator/style@1", style_id: "main" };
+  const model = makeModel({ elements: [{ name: "T", kind: "text", font_pt: 18, font_name: "Papyrus", color: "#222222" }] });
+  const result = evaluatePerceptualQa({ model, contexts: [], rules: {}, style: bare });
+  assert.equal(result.findings.some((finding) => finding.category === "style_deviation"), false);
+});
+
+await check("color-blind risk flags red/green pairs with similar luminance", async () => {
+  const model = makeModel({
+    elements: [
+      { name: "A", kind: "shape", fill: "#FF0000" },
+      { name: "B", kind: "shape", fill: "#008000" },
+      { name: "C", kind: "shape", fill: "#0000FF" },
+      { name: "D", kind: "shape", fill: "#5555CC" },
+    ],
+  });
+  const disabled = evaluatePerceptualQa({ model, contexts: [], rules: {} });
+  assert.equal(disabled.findings.some((finding) => finding.category === "color_blind_risk"), false);
+  const enabled = evaluatePerceptualQa({ model, contexts: [], rules: { "accessibility.non_color_encoding": true } });
+  const findings = enabled.findings.filter((finding) => finding.category === "color_blind_risk");
+  assert.equal(findings.length, 1);
+  assert.deepEqual(findings[0].objects, ["A", "B"]);
+  assert.equal(findings[0].rule_token, "accessibility.non_color_encoding");
+
+  const spread = makeModel({
+    elements: [
+      { name: "R", kind: "shape", fill: "#FF0000" },
+      { name: "G", kind: "shape", fill: "#00E000" },
+    ],
+  });
+  const defaultThreshold = evaluatePerceptualQa({ model: spread, contexts: [], rules: { "accessibility.non_color_encoding": true } });
+  assert.equal(defaultThreshold.findings.some((finding) => finding.category === "color_blind_risk"), false, "a 55-level gap passes the default threshold");
+  const widened = evaluatePerceptualQa({
+    model: spread,
+    contexts: [],
+    rules: { "accessibility.non_color_encoding": true },
+    options: { color_blind_min_luminance_delta: 100 },
+  });
+  assert.equal(widened.findings.some((finding) => finding.category === "color_blind_risk"), true);
+
+  const optionEnabled = evaluatePerceptualQa({ model, contexts: [], rules: {}, options: { color_blind_check: true } });
+  assert.equal(optionEnabled.findings.some((finding) => finding.category === "color_blind_risk"), true);
+
+  const notation = makeModel({
+    elements: [
+      { name: "A1", kind: "shape", fill: "#FF0000" },
+      { name: "A2", kind: "shape", fill: "#F00" },
+      { name: "G", kind: "shape", fill: "#008000" },
+    ],
+  });
+  const notationFindings = evaluatePerceptualQa({ model: notation, contexts: [], rules: { "accessibility.non_color_encoding": true } });
+  assert.equal(
+    notationFindings.findings.filter((finding) => finding.category === "color_blind_risk").length,
+    1,
+    "equivalent hex notations collapse into one pair"
+  );
+
+  const mixedKinds = makeModel({
+    elements: [
+      { name: "RedShape", kind: "shape", fill: "#FF0000" },
+      { name: "GreenText", kind: "text", fill: "#008000" },
+    ],
+  });
+  const mixedFindings = evaluatePerceptualQa({ model: mixedKinds, contexts: [], rules: { "accessibility.non_color_encoding": true } });
+  assert.equal(mixedFindings.findings.some((finding) => finding.category === "color_blind_risk"), true, "text fills participate in the pairing");
+
+  const near = makeModel({
+    elements: [
+      { name: "R", kind: "shape", fill: "#FF0000" },
+      { name: "G", kind: "shape", fill: "#00CA00" },
+    ],
+  });
+  const defaultNear = evaluatePerceptualQa({ model: near, contexts: [], rules: { "accessibility.non_color_encoding": true } });
+  assert.equal(defaultNear.findings.some((finding) => finding.category === "color_blind_risk"), false, "a 42-level gap passes the default threshold");
+  const widenedNear = evaluatePerceptualQa({
+    model: near,
+    contexts: [],
+    rules: { "accessibility.non_color_encoding": true },
+    options: { color_blind_min_luminance_delta: 50 },
+  });
+  assert.equal(widenedNear.findings.some((finding) => finding.category === "color_blind_risk"), true);
+  const exactDelta = Math.abs(grayscaleLuminance("#FF0000") - grayscaleLuminance("#00CA00"));
+  const exact = evaluatePerceptualQa({
+    model: near,
+    contexts: [],
+    rules: { "accessibility.non_color_encoding": true },
+    options: { color_blind_min_luminance_delta: exactDelta },
+  });
+  assert.equal(exact.findings.some((finding) => finding.category === "color_blind_risk"), false, "a gap exactly at the threshold passes");
+});
+
 await check("thumbnail context flags figures whose largest text vanishes", async () => {
   const flagged = evaluatePerceptualQa({ model: makeModel(), contexts: [{ id: "thumbnail", width_px: 300 }], rules: {} });
   const finding = flagged.findings.find((entry) => entry.category === "thumbnail_illegible");
