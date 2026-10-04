@@ -1,18 +1,20 @@
 # Scientific Illustrator
 
-把参考图上传给 Codex，插件会在 **Microsoft PowerPoint、WPS 演示或 draw.io** 中尽量用可编辑对象重新绘制，并自动检查和修正。
+把你的参考图交给 AI Agent（Codex、OpenCode、Google Antigravity 等），它会在 **Microsoft PowerPoint、WPS 演示或 draw.io** 中尽量用可编辑对象重新绘制，并自动检查和修正。
 
 **作者：GenCurtis**
 
 GitHub：[@GenCurtis](https://github.com/GenCurtis)
 
-当前版本：[v1.5.4-gcSIfix-5](https://github.com/GenCurtis/scientific-illustrator/tags)
+最新版本与完整变更历史：[CHANGELOG.md](CHANGELOG.md)
 
-本项目是 [drawio-scientific-illustrator](https://github.com/icebird1998/drawio-scientific-illustrator) 的升级整合版，后续功能只在本项目更新。
+本项目是 [drawio-scientific-illustrator](https://github.com/icebird1998/drawio-scientific-illustrator) 的升级整合版，后续功能只在本项目更新。插件遵循开放的 Agent Skills 标准与 MCP 协议，可在 Codex、OpenCode、Google Antigravity 及同类 Agent 环境中使用。
 
-## 第一次使用：只需 3 步
+## 安装
 
-### 第 1 步：安装插件
+按你使用的 Agent 环境选择安装方式。
+
+### Codex
 
 把下面这段话完整发送给 Codex：
 
@@ -22,17 +24,48 @@ GitHub：[@GenCurtis](https://github.com/GenCurtis)
 scientific-illustrator@scientific-illustrator-tools。完成后提醒我重启 Codex。
 ~~~
 
-### 第 2 步：重启 Codex
+也可以直接运行安装脚本。
 
-安装完成后：
+**Windows**
 
-1. 完全退出并重新打开 Codex；
-2. 新建一个任务；
-3. 打开准备使用的 PowerPoint、WPS 演示或 draw.io Desktop。
+~~~powershell
+$p="$env:TEMP\scientific-illustrator-install.ps1"; Invoke-WebRequest https://raw.githubusercontent.com/GenCurtis/scientific-illustrator/main/install.ps1 -OutFile $p; powershell -ExecutionPolicy Bypass -File $p
+~~~
 
-### 第 3 步：上传图片并复制提示词
+**macOS / Linux**
 
-把参考图上传到 Codex，然后从下方选择与你的软件对应的提示词，**整段复制发送**即可。
+~~~bash
+curl -fsSL https://raw.githubusercontent.com/GenCurtis/scientific-illustrator/main/install.sh | bash
+~~~
+
+**手动安装**
+
+~~~bash
+git clone https://github.com/GenCurtis/scientific-illustrator.git
+cd scientific-illustrator
+codex plugin marketplace add "$(pwd)"
+codex plugin add scientific-illustrator@scientific-illustrator-tools
+~~~
+
+安装或更新后，重启 Codex 并新建任务。
+
+### OpenCode
+
+参见 [OpenCode 使用指南](docs/opencode.md)：克隆仓库，按 `opencode.json.example` 把三个 MCP server 注册进 `opencode.json`，并把技能放到 OpenCode 的发现路径。
+
+### Google Antigravity
+
+参见 [Antigravity 使用指南](docs/antigravity.md)：克隆仓库，按 `mcp_config.json.example` 注册 MCP server，并把技能目录加入工作区。
+
+### 其他 Agent 环境
+
+任何支持 Agent Skills 标准并提供本地 MCP server 的环境都可以接入：技能位于 `plugins/scientific-illustrator/skills/`，MCP 定义见 `plugins/scientific-illustrator/.mcp.json`，可参考上面两个示例配置。
+
+## 第一次使用：只需 3 步
+
+1. 按上面的方式安装，然后重启你的 Agent 并新建任务；
+2. 打开准备使用的 PowerPoint、WPS 演示或 draw.io Desktop；
+3. 上传参考图，从下方选择与你的软件对应的提示词，**整段复制发送**即可。
 
 ## 支持哪些平台和软件
 
@@ -48,18 +81,21 @@ scientific-illustrator@scientific-illustrator-tools。完成后提醒我重启 C
 
 ## 直接复制使用
 
+先在对应软件中打开工作环境并上传参考图。
+
+> **Codex 用户**：在提示词最前面加上一行 `[@scientific-illustrator](plugin://scientific-illustrator@scientific-illustrator-tools)`，或直接在输入框的插件菜单中选择 **Scientific Illustrator**，确保插件被调用。其他 Agent 环境直接发送下面的提示词正文即可。
+
 ### 使用 Microsoft PowerPoint
 
 先打开 PowerPoint 并上传参考图，然后复制：
 
 ~~~text
-[@scientific-illustrator](plugin://scientific-illustrator@scientific-illustrator-tools)
 使用 Scientific Illustrator，在当前 Microsoft PowerPoint 中复刻我上传的参考图。
 先连接 PowerPoint，检查状态、可用能力、backend 和当前幻灯片；如果没有演示文稿就新建。
 只有 COM 或 officejs-context-sync 才能声称连接当前窗口；如果使用 OOXML，明确说明正在编辑工作副本。
 默认在后台绘制，不要反复抢占窗口；使用零人工等待的批量绘制。优先使用可编辑的文字、形状、连接线、表格和图表；公式用 LaTeX 通过原生公式插入，不要写成纯文本。
 只有无法可靠绘制的最小区域，例如显微照片或复杂纹理，才裁剪为图片插入。
-按区域逐步绘制，每完成一个区域就检查结构和预览图，有问题先修正再继续。
+按有界批次连续绘制，在每个检查点检查结构和预览图，只修正有问题的对象，然后继续。
 完成后做全图对比检查，保存 PPTX 并导出最终预览图。
 ~~~
 
@@ -68,13 +104,12 @@ scientific-illustrator@scientific-illustrator-tools。完成后提醒我重启 C
 先打开 WPS 演示并上传参考图，然后复制：
 
 ~~~text
-[@scientific-illustrator](plugin://scientific-illustrator@scientific-illustrator-tools)
 使用 Scientific Illustrator，在 WPS 演示中复刻我上传的参考图。
 请将 host_application 明确设为 wps，不要连接 Microsoft PowerPoint；先检查状态和可用能力，
 确认 target_application=wps 且 microsoft_powerpoint_used=false。如果没有指定要编辑的 PPTX 路径，
 就新建一个 WPS 可编辑工作副本，不要声称已连接任意未保存的当前窗口。默认在后台按检查点绘制。
 优先使用可编辑的文字、形状、连接线、表格和图表。只有无法可靠绘制的最小区域，
-例如显微照片或复杂纹理，才裁剪为图片插入。按区域逐步绘制；每个区域完成后调用刷新，
+例如显微照片或复杂纹理，才裁剪为图片插入。按有界批次绘制；每个检查点完成后调用刷新，
 分别检查 open_dispatched、document_open_verified 和 refresh_verified，有问题先修正。
 完成后做全图对比检查，保存 PPTX 并导出最终预览图。
 ~~~
@@ -84,7 +119,6 @@ scientific-illustrator@scientific-illustrator-tools。完成后提醒我重启 C
 先安装并打开 [draw.io Desktop](https://www.drawio.com/)，上传参考图，然后复制：
 
 ~~~text
-[@scientific-illustrator](plugin://scientific-illustrator@scientific-illustrator-tools)
 使用 Scientific Illustrator，连接实时 draw.io 画布并复刻我上传的参考图。
 优先使用可编辑的文字、图形、连接线、表格、图表和分组对象。
 只有无法可靠绘制的最小区域，例如显微照片或复杂纹理，才裁剪为图片插入。
@@ -92,46 +126,11 @@ scientific-illustrator@scientific-illustrator-tools。完成后提醒我重启 C
 完成后做全图对比检查，保存可编辑 .drawio，并导出宽度为 2000 px 的 PNG 预览图。
 ~~~
 
-如果第一行插件命令没有被识别，请在 Codex 输入框的插件菜单中选择 **Scientific Illustrator**，再发送后面的提示词。
-
 如果想让 PowerPoint 或 WPS 一直显示在最前面观看绘制过程，在提示词最后加一句：
 
 ~~~text
 绘制期间请将 focus_policy 设置为 foreground，让演示文稿保持在前台。
 ~~~
-
-## 其他安装方式
-
-大多数用户使用上面的“让 Codex 安装”即可。也可以直接运行安装脚本。
-
-### Windows
-
-~~~powershell
-$p="$env:TEMP\scientific-illustrator-install.ps1"; Invoke-WebRequest https://raw.githubusercontent.com/GenCurtis/scientific-illustrator/main/install.ps1 -OutFile $p; powershell -ExecutionPolicy Bypass -File $p
-~~~
-
-### macOS / Linux
-
-~~~bash
-curl -fsSL https://raw.githubusercontent.com/GenCurtis/scientific-illustrator/main/install.sh | bash
-~~~
-
-### 手动安装
-
-~~~bash
-git clone https://github.com/GenCurtis/scientific-illustrator.git
-cd scientific-illustrator
-codex plugin marketplace add "$(pwd)"
-codex plugin add scientific-illustrator@scientific-illustrator-tools
-~~~
-
-安装或更新后，都要重启 Codex 并新建任务。
-
-### 在 OpenCode 与 Antigravity 中使用
-
-本项目原生兼容支持 Agent Skills 开放标准与 MCP 协议的各类 Agent 环境：
-- **OpenCode 接入**：参见 [OpenCode 使用指南](docs/opencode.md) 与 opencode.json.example
-- **Google Antigravity 接入**：参见 [Antigravity 使用指南](docs/antigravity.md) 与 mcp_config.json.example
 
 <details>
 <summary><strong>Mac PowerPoint：启用逐对象实时绘制（可选）</strong></summary>
@@ -159,23 +158,16 @@ node plugins/scientific-illustrator/scripts/officejs-setup.mjs sideload
 
 ## 版本更新
 
-| 版本 | 主要变化 |
-|---|---|
-| [v1.5.4](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.5.4) | 将作者署名统一更新为“一个地质博士” |
-| [v1.5.3](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.5.3) | 修复双平台三软件兼容、连接状态和表格/图表/箭头更新；增加三平台 CI、真实打开验证及 draw.io 防伪形状检查 |
-| [v1.5.2](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.5.2) | 修复 Mac PowerPoint 实时加载项的图标格式，避免加载项被静默忽略 |
-| [v1.5.1](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.5.1) | 修复 PowerPoint/WPS 反复抢占窗口；默认可在后台绘制 |
-| [v1.5.0](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.5.0) | 支持 Windows/macOS 下的 PowerPoint、WPS、draw.io，并加入 Mac PowerPoint 实时模式 |
-| [v1.3.0](https://github.com/icebird1998/scientific-illustrator/releases/tag/v1.3.0) | 首个公开版本，支持 Windows PowerPoint 和 draw.io |
+最新版本与每个版本的详细变更见 [CHANGELOG.md](CHANGELOG.md)；历史版本（用于回退）见 [tags 页面](https://github.com/GenCurtis/scientific-illustrator/tags)。
 
-旧版本不会被覆盖。需要回退时：
+需要回退时：
 
 ~~~bash
 git fetch --tags
-git checkout v1.5.0
+git checkout <tag>
 ~~~
 
-然后从该目录重新注册 Marketplace 并安装插件。更新到最新版时重新运行安装脚本即可。
+回退后，按上面的安装方式重新安装（Codex 重新注册该目录的 Marketplace；其他环境重新指向该目录的 MCP 配置）。
 
 ## 许可证与隐私
 

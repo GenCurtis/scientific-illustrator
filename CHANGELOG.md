@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.4-gcSIfix-6 — 2026-10-04
+
+- Generalized the README for agent-neutral use: installation is organized by environment (Codex, OpenCode, Antigravity, and any Agent Skills + MCP host), the prompts no longer require the Codex-only `plugin://` mention, and the hardcoded version line plus the release table were replaced with links to `CHANGELOG.md` and the tags page so no duplicated release list can go stale.
+- README PowerPoint/WPS prompts now describe bounded batches and checkpoint review instead of per-region stepping, matching the shipped workflow.
+- User-visible copy no longer names Codex: the Mac PowerPoint task pane status/help text, the Office.js setup next steps, and both language versions of `PRIVACY.md` now address the user's AI agent instead.
+
 ## 1.5.4-gcSIfix-5 — 2026-10-04
 
 - Review-debt checkpoint reminder: mutation results (single actions and `powerpoint_draw_sequence`) carry a `review_reminder` once `mutations_since_last_render` crosses the configurable review-debt threshold (default 25; override with `SCIENTIFIC_ILLUSTRATOR_REVIEW_DEBT_THRESHOLD`). The reminder reports both debt values and tells the agent to render and audit at the next checkpoint; a fresh render clears it. Evidence tools and status never carry the reminder, and inner sequence operations stay clean because only top-level mutation results are annotated.

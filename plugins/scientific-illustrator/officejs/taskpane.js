@@ -1264,7 +1264,7 @@
     stopped = false;
     setStatus("waiting", "正在连接本机桥接器…", "正在注册当前 PowerPoint 任务窗格。");
     await request("/api/register", { method: "POST", body: JSON.stringify(registration()) });
-    setStatus("connected", "已连接，等待绘制命令", "Codex 现在可以直接控制当前幻灯片的 Office.js 对象模型。");
+    setStatus("connected", "已连接，等待绘制命令", "你的 Agent 现在可以直接控制当前幻灯片的 Office.js 对象模型。");
     await commandLoop();
   }
 
