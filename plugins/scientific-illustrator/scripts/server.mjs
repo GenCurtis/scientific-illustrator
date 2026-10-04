@@ -8,8 +8,9 @@ import path from "node:path";
 import os from "node:os";
 import { drawioInstallHint, resolveDrawioExecutable } from "./drawio-path.mjs";
 import { VERSION as SERVER_VERSION, assertAllowedPath, assertAllowedRealPath, atomicWrite } from "./guardrails.mjs";
-import { readFigureBrief, writeFigureBrief, readProfileDefaults } from "./figure-truth.mjs";
+import { readFigureBrief, writeFigureBrief } from "./figure-truth.mjs";
 import { readFigureStyle, writeFigureStyle } from "./figure-style.mjs";
+import { readFigureKind, readProfileKnowledge } from "./figure-knowledge.mjs";
 
 const execFileAsync = promisify(execFile);
 const SERVER_NAME = "scientific-illustrator-file-utils";
@@ -377,7 +378,7 @@ const tools = [
   {
     name: "figure_profile_get",
     description:
-      "Return the machine-readable default parameters for a design profile (paper-figure, graphical-abstract, poster, slides, diagram). Parameters without a default are returned as empty objects ({}); brief.profile_settings overrides these defaults. Profile quality rules and publisher numbers are separate layers (later stages).",
+      "Return the bundled quality rules and machine-readable default parameters for a design profile (paper-figure, graphical-abstract, poster, slides, diagram). quality_rules is the profile's \"what makes a good figure\" page; parameters without a default are returned as empty objects ({}), and brief.profile_settings overrides them. Publisher numbers are a separate layer (publication compliance).",
     inputSchema: {
       type: "object",
       required: ["profile"],
@@ -385,6 +386,22 @@ const tools = [
         profile: {
           type: "string",
           description: "Design profile id: paper-figure, graphical-abstract, poster, slides, or diagram.",
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "figure_kind_get",
+    description:
+      "Return the bundled design-grammar page for a scientific figure kind (data-plot, multi-panel-data, experimental-workflow, mechanism, process, system-architecture, image-panel, spatial, network, mixed-composite): semantic primitives, layout archetypes, encoding conventions, common failure modes, and boundaries to neighboring kinds. The Designer selects a kind from user intent and records it in brief.figure_kind explicitly.",
+    inputSchema: {
+      type: "object",
+      required: ["kind"],
+      properties: {
+        kind: {
+          type: "string",
+          description: "Figure kind id from the v1 taxonomy.",
         },
       },
       additionalProperties: false,
@@ -1110,7 +1127,9 @@ async function handleTool(name, args = {}) {
         expectedRevision: args.expected_revision,
       });
     case "figure_profile_get":
-      return readProfileDefaults(args.profile);
+      return readProfileKnowledge(args.profile);
+    case "figure_kind_get":
+      return readFigureKind(args.kind);
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
@@ -1125,7 +1144,7 @@ async function handleMessage(message) {
       protocolVersion,
       capabilities: { tools: { listChanged: false } },
       serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
-      instructions: "This is the post-live draw.io file-utilities server, not the live drawing backend. For Scientific Illustrator work, first use drawio_live_get_capabilities and construct every region visibly with drawio_live_* tools, including local screenshot/correction gates. Use these file utilities only after live cells exist to validate, inspect, export, or repair a saved snapshot, unless the user explicitly requested a non-live file-only workflow. drawio_create_diagram and drawio_write_xml require a declared workflow_context. Never rasterize reconstructable text, shapes, arrows, tables, charts, axes, or legends; every deliverable image cell must be one atomic irreducible raster unit with a specific reason, tight-source/crop audit, contains_reconstructable_content=false, and a decomposition note. Inline HTML/SVG images are rejected because their source and crop cannot be audited. A trace reference overlay is analysis-only and must not remain in the final deliverable. figure_brief_read/figure_brief_write persist the scientific-truth brief with three-level resolution (explicit path, project .scientific-illustrator/, or sibling); a missing brief is reported as exists=false, never invented, and brief reads/writes return recreation_gate (unresolved ambiguity under the declared recreation policy). figure_style_read/figure_style_write persist the shared manuscript style contract with the same resolution and optimistic locking. figure_profile_get returns the machine-readable default parameters for a design profile.",
+      instructions: "This is the post-live draw.io file-utilities server, not the live drawing backend. For Scientific Illustrator work, first use drawio_live_get_capabilities and construct every region visibly with drawio_live_* tools, including local screenshot/correction gates. Use these file utilities only after live cells exist to validate, inspect, export, or repair a saved snapshot, unless the user explicitly requested a non-live file-only workflow. drawio_create_diagram and drawio_write_xml require a declared workflow_context. Never rasterize reconstructable text, shapes, arrows, tables, charts, axes, or legends; every deliverable image cell must be one atomic irreducible raster unit with a specific reason, tight-source/crop audit, contains_reconstructable_content=false, and a decomposition note. Inline HTML/SVG images are rejected because their source and crop cannot be audited. A trace reference overlay is analysis-only and must not remain in the final deliverable. figure_brief_read/figure_brief_write persist the scientific-truth brief with three-level resolution (explicit path, project .scientific-illustrator/, or sibling); a missing brief is reported as exists=false, never invented, and brief reads/writes return recreation_gate (unresolved ambiguity under the declared recreation policy). figure_style_read/figure_style_write persist the shared manuscript style contract with the same resolution and optimistic locking. figure_profile_get returns a design profile's quality rules plus its machine-readable default parameters; figure_kind_get returns the grammar page for a figure kind (primitives, archetypes, encoding, failure modes, boundaries).",
     });
   }
   if (method === "ping") return rpcResult(id, {});

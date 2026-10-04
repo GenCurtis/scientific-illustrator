@@ -108,6 +108,26 @@ for (const profile of ["paper-figure", "graphical-abstract", "poster", "slides",
     throw new Error(`references/profiles/defaults.json has missing or invalid parameters for profile "${profile}".`);
   }
 }
+for (const kind of ["data-plot", "multi-panel-data", "experimental-workflow", "mechanism", "process", "system-architecture", "image-panel", "spatial", "network", "mixed-composite"]) {
+  const source = await fs.readFile(path.join(pluginRoot, "references", "figure-kinds", `${kind}.md`), "utf8");
+  if (!source.startsWith(`# kind: ${kind}`)) {
+    throw new Error(`references/figure-kinds/${kind}.md must start with "# kind: ${kind}".`);
+  }
+  for (const heading of ["## 适用与识别信号", "## semantic primitives", "## layout archetypes", "## 编码约定", "## 常见失败模式", "## 与其他 kind 的边界"]) {
+    if (!source.includes(heading)) {
+      throw new Error(`references/figure-kinds/${kind}.md is missing section "${heading}".`);
+    }
+  }
+}
+for (const profile of ["paper-figure", "graphical-abstract", "poster", "slides", "diagram"]) {
+  const source = await fs.readFile(path.join(pluginRoot, "references", "profiles", `${profile}.md`), "utf8");
+  if (!source.startsWith(`# profile: ${profile}`)) {
+    throw new Error(`references/profiles/${profile}.md must start with "# profile: ${profile}".`);
+  }
+  if (!source.includes("## 质量检查清单")) {
+    throw new Error(`references/profiles/${profile}.md is missing the quality checklist section.`);
+  }
+}
 const ooxmlBridgePath = path.join(pluginRoot, "scripts", "powerpoint-mac-bridge.py");
 await fs.access(ooxmlBridgePath);
 await fs.access(path.join(pluginRoot, "scripts", "officejs-bridge.mjs"));
