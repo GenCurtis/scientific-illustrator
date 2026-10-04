@@ -35,6 +35,7 @@ const requiredBySkill = {
     "correction attempts",
     "reuse the verified motif",
     "unchanged_since_last_call",
+    "review_reminder",
   ],
   "recreate-scientific-figure": ["zero artificial delay", "bounded batches", "checkpoint"],
 };
@@ -96,6 +97,7 @@ try {
   }
   assert.match(sequence.description, /batch/i);
   assert.match(sequence.description, /zero artificial delay/i);
+  assert.match(sequence.description, /review_reminder/i, "draw_sequence must document the review-debt reminder");
 
   const planner = byName.get("powerpoint_plan_reconstruction");
   assert.ok(planner, "powerpoint_plan_reconstruction is missing from the MCP surface");

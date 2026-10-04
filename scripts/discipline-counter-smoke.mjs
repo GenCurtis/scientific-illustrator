@@ -18,6 +18,7 @@ const child = spawn(process.execPath, [path.join(root, "plugins/scientific-illus
     SCIENTIFIC_ILLUSTRATOR_PPT_HOST: "wps",
     SCIENTIFIC_ILLUSTRATOR_PPT_BACKEND: "ooxml",
     SCIENTIFIC_ILLUSTRATOR_POWERPOINT_SYNC: "0",
+    SCIENTIFIC_ILLUSTRATOR_REVIEW_DEBT_THRESHOLD: "3",
     SCIENTIFIC_ILLUSTRATOR_STATE_DIR: temporary,
   },
 });
@@ -65,11 +66,13 @@ try {
   assert.equal(inspectTwo.discipline.unchanged_since_last_call, true, "a second unchanged inspect must be flagged");
   assert.equal(inspectTwo.discipline.redundant_inspects, 1, "the redundant inspect must be counted");
 
-  await call("powerpoint_add_shape", { slide_index: 1, name: "discipline-a", shape: "rectangle", left: 10, top: 10, width: 40, height: 20 });
+  const addShape = await call("powerpoint_add_shape", { slide_index: 1, name: "discipline-a", shape: "rectangle", left: 10, top: 10, width: 40, height: 20 });
+  assert.equal(addShape.review_reminder, undefined, "a small edit stays below the review-debt threshold");
   const inspectThree = await call("powerpoint_inspect", { max_shapes_per_slide: 1000 });
   assert.equal(inspectThree.discipline.revision, 1, "a mutation must advance the revision");
   assert.equal(inspectThree.discipline.unchanged_since_last_call, false, "an inspect after a mutation is fresh");
   assert.equal(inspectThree.discipline.redundant_inspects, 1);
+  assert.equal(inspectThree.review_reminder, undefined, "evidence tools never carry the mutation reminder");
 
   const auditOne = await call("powerpoint_audit_figure", { slide_index: 1 });
   assert.equal(auditOne.discipline.mutations_since_last_audit, 0);
@@ -89,13 +92,22 @@ try {
   assert.equal(sequence.discipline.mutations_since_last_audit, 3, "review debt after the last audit must be exact");
   assert.equal(sequence.discipline.mutations_since_last_render, 5, "render debt counts every mutation since the last render");
   assert.equal(sequence.discipline.stale_review, true);
+  assert.ok(sequence.review_reminder, "crossing the review-debt threshold must add a checkpoint reminder");
+  assert.equal(sequence.review_reminder.threshold, 3, "the env override must control the reminder threshold");
+  assert.equal(sequence.review_reminder.mutations_since_last_render, 5);
+  assert.match(sequence.review_reminder.action, /checkpoint/i);
+
+  const singleAfter = await call("powerpoint_add_shape", { slide_index: 1, name: "discipline-e", shape: "rectangle", left: 250, top: 10, width: 40, height: 20 });
+  assert.ok(singleAfter.review_reminder, "single mutations keep the reminder while the render debt remains");
+  assert.equal(singleAfter.review_reminder.mutations_since_last_render, 6);
 
   const statusOne = await call("powerpoint_status", {});
   assert.equal(statusOne.discipline.redundant_inspects, 1);
   assert.equal(statusOne.discipline.redundant_audits, 1);
   assert.equal(statusOne.discipline.stale_review, true, "unreviewed mutations must keep the review debt visible");
+  assert.equal(statusOne.review_reminder, undefined, "status reports the counters without the mutation reminder");
 
-  console.log("discipline counters: redundant unchanged reviews are counted, scopes are respected, and review debt is exact.");
+  console.log("discipline counters: redundant unchanged reviews are counted, scopes are respected, review debt is exact, and the checkpoint reminder fires past the threshold.");
 } finally {
   lines.close();
   child.kill();

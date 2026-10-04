@@ -1,6 +1,6 @@
 {
   "name": "scientific-illustrator-marketplace",
-  "version": "1.5.4-gcSIfix-4",
+  "version": "1.5.4-gcSIfix-5",
   "private": true,
   "description": "Validation helpers for the Scientific Illustrator Codex plugin marketplace.",
   "type": "module",

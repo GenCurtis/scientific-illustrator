@@ -6,7 +6,7 @@
 
 GitHub：[@GenCurtis](https://github.com/GenCurtis)
 
-当前版本：[v1.5.4-gcSIfix-4](https://github.com/GenCurtis/scientific-illustrator/tags)
+当前版本：[v1.5.4-gcSIfix-5](https://github.com/GenCurtis/scientific-illustrator/tags)
 
 本项目是 [drawio-scientific-illustrator](https://github.com/icebird1998/drawio-scientific-illustrator) 的升级整合版，后续功能只在本项目更新。
 
@@ -42,7 +42,7 @@ scientific-illustrator@scientific-illustrator-tools。完成后提醒我重启 C
 | WPS 演示 | 支持 | 支持 | 绘制为可编辑 PPTX 工作副本；默认按检查点后台刷新，不会持续抢占窗口 |
 | draw.io Desktop | 支持 | 支持 | 直接控制 draw.io 画布，保存可编辑 .drawio 并导出预览图 |
 
-默认情况下，PowerPoint 和 WPS 会在后台绘制，你可以继续使用电脑。新启动的 PowerPoint 窗口会在后台最小化打开，图表数据用的 Excel 窗口也会隐藏，不再弹到前台。绘制默认使用零人工等待的有界批量：Windows COM 与 OOXML 都是「一批一进程」，OOXML 每批只读写一次文件；简单重复对象批量复用，复杂模块才定点检查修正。每次 inspect/audit/渲染都会返回 `discipline` 计数器（内容修订号、重复审查计数、未审查债务），重复检查未变更内容会被明确标记，改动后未复审也会显示为 review debt。WPS 使用可编辑 PPTX 工作副本，不会假装已经连接任意未保存的当前窗口；macOS 会验证文件是否真的由 WPS 打开，Windows 无法验证时会明确显示“未知”。draw.io 不认识的图形名会直接报错，不会悄悄退化成矩形。显微照片、复杂纹理等确实无法用形状还原的内容，只会把最小必要区域作为图片插入，其余文字、箭头和边框仍保持可编辑。数学公式请用 `powerpoint_add_equation` 以 LaTeX 插入为原生可编辑的 OMML 矢量公式，不要用纯文本或图片代替（Windows 实时绘制需要安装 Microsoft Word 完成公式转换）。
+默认情况下，PowerPoint 和 WPS 会在后台绘制，你可以继续使用电脑。新启动的 PowerPoint 窗口会在后台最小化打开，图表数据用的 Excel 窗口也会隐藏，不再弹到前台。绘制默认使用零人工等待的有界批量：Windows COM 与 OOXML 都是「一批一进程」，OOXML 每批只读写一次文件；简单重复对象批量复用，复杂模块才定点检查修正。每次 inspect/audit/渲染都会返回 `discipline` 计数器（内容修订号、重复审查计数、未审查债务），重复检查未变更内容会被明确标记，改动后未复审也会显示为 review debt；未渲染的改动累计超过阈值时，变更结果会附带 `review_reminder` 检查点提醒。WPS 使用可编辑 PPTX 工作副本，不会假装已经连接任意未保存的当前窗口；macOS 会验证文件是否真的由 WPS 打开，Windows 无法验证时会明确显示“未知”。draw.io 不认识的图形名会直接报错，不会悄悄退化成矩形。显微照片、复杂纹理等确实无法用形状还原的内容，只会把最小必要区域作为图片插入，其余文字、箭头和边框仍保持可编辑。数学公式请用 `powerpoint_add_equation` 以 LaTeX 插入为原生可编辑的 OMML 矢量公式，不要用纯文本或图片代替（Windows 实时绘制需要安装 Microsoft Word 完成公式转换）。
 
 每次更新都会在 Ubuntu、macOS 和 Windows 上运行代码、MCP、Python、PowerShell、路径发现与 OOXML 回归测试。本版另在真实 Mac 上验证了 PowerPoint 精确打开/刷新/关闭、WPS 指定文件打开和 draw.io 实时画布；GitHub 公共测试机没有商业版 PowerPoint/WPS，因此 Windows 的应用内联调必须由安装后的状态工具确认，不能把模拟测试当成实机连接成功。
 

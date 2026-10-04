@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.4-gcSIfix-5 — 2026-10-04
+
+- Review-debt checkpoint reminder: mutation results (single actions and `powerpoint_draw_sequence`) carry a `review_reminder` once `mutations_since_last_render` crosses the configurable review-debt threshold (default 25; override with `SCIENTIFIC_ILLUSTRATOR_REVIEW_DEBT_THRESHOLD`). The reminder reports both debt values and tells the agent to render and audit at the next checkpoint; a fresh render clears it. Evidence tools and status never carry the reminder, and inner sequence operations stay clean because only top-level mutation results are annotated.
+- Tests: `discipline-counter-smoke.mjs` verifies the threshold override, single and batch reminder behavior, and reminder-free evidence tools; the COM live suite adds a trigger-and-clear step (now 50 steps). The workflow contract lint requires the skill and the `draw_sequence` description to document the reminder.
+
 ## 1.5.4-gcSIfix-4 — 2026-10-04
 
 - Session discipline counters: the server tracks a content revision (advanced by every mutation, exact for batches via `operations_applied`) and, for each evidence tool (`powerpoint_inspect`, `powerpoint_audit_figure`, `powerpoint_export_slide_image`), the revision and scope last observed. Results and `powerpoint_status` carry a `discipline` block with `unchanged_since_last_call`, `redundant_inspects/audits/renders`, `mutations_since_last_inspect/audit/render`, and `stale_review`. Repeating an unchanged review is counted instead of silently wasted; review debt after edits stays visible. Different scopes are never counted redundant, and counters reset on new/closed presentations.

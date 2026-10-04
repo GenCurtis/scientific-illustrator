@@ -137,6 +137,30 @@ function recordEvidenceCall(action, args) {
   return { ...disciplineSnapshot(), unchanged_since_last_call: unchanged };
 }
 
+// A soft safety net for runaway editing: once this many mutations accumulate
+// without a fresh render, mutation results carry a checkpoint reminder. The
+// workflow expects review at coherent checkpoints; the reminder only fires
+// when that discipline has clearly lapsed.
+const REVIEW_DEBT_THRESHOLD = (() => {
+  const raw = String(process.env.SCIENTIFIC_ILLUSTRATOR_REVIEW_DEBT_THRESHOLD || "").trim();
+  if (!raw) return 25;
+  const value = Number(raw);
+  return Number.isInteger(value) && value > 0 ? value : 25;
+})();
+
+let insideSequence = false;
+
+function reviewReminder() {
+  const snapshot = disciplineSnapshot();
+  if (snapshot.mutations_since_last_render < REVIEW_DEBT_THRESHOLD) return null;
+  return {
+    threshold: REVIEW_DEBT_THRESHOLD,
+    mutations_since_last_render: snapshot.mutations_since_last_render,
+    mutations_since_last_audit: snapshot.mutations_since_last_audit,
+    action: "Render and audit the changed content at the next checkpoint before continuing.",
+  };
+}
+
 const positionProperties = {
   left: { type: "number", minimum: -100000, maximum: 100000, description: "Left position in points (72 points = 1 inch)." },
   top: { type: "number", minimum: -100000, maximum: 100000, description: "Top position in points." },
@@ -741,7 +765,7 @@ const tools = [
   },
   {
     name: "powerpoint_draw_sequence",
-    description: "Apply a sequence of editable objects with zero artificial delay by default. Windows PowerPoint COM and file-backed PowerPoint/WPS execute bounded batches in one bridge process (OOXML also loads and saves the PPTX once per batch) and refresh the application at checkpoints; failed operations keep the committed prefix and report the exact index (OOXML additionally restores the prefix from disk). Office.js acknowledges every context.sync.",
+    description: "Apply a sequence of editable objects with zero artificial delay by default. Windows PowerPoint COM and file-backed PowerPoint/WPS execute bounded batches in one bridge process (OOXML also loads and saves the PPTX once per batch) and refresh the application at checkpoints; failed operations keep the committed prefix and report the exact index (OOXML additionally restores the prefix from disk). Mutation results carry a `review_reminder` once `mutations_since_last_render` crosses the review-debt threshold, and a fresh render clears it. Office.js acknowledges every context.sync.",
     inputSchema: {
       type: "object",
       required: ["operations"],
@@ -1160,6 +1184,10 @@ async function runBridge(action, args = {}, forcedBackend = null) {
     } else if (action === "status") {
       value.discipline = disciplineSnapshot();
     }
+    if (!insideSequence && MUTATING_ACTIONS.has(action)) {
+      const reminder = reviewReminder();
+      if (reminder) value.review_reminder = reminder;
+    }
     if (action === "status" || action === "capabilities") {
       value.officejs_live = await officeJsStatus(0);
     }
@@ -1231,6 +1259,7 @@ async function runSequence(args) {
   let pendingFileRefresh = false;
   let appliedObjects = 0;
   let currentIndex = 0;
+  insideSequence = true;
 
   const flushFileRefresh = async (reason) => {
     if (sequenceBackend !== "ooxml" || !pendingFileRefresh) return;
@@ -1319,9 +1348,13 @@ async function runSequence(args) {
     } catch (refreshError) {
       error.message = `${error.message}; final OOXML refresh also failed: ${refreshError.message}`;
     }
-    error.details = { failed_operation_index: currentIndex, ...error.details, operations_applied: results.length, object_operations_applied: appliedObjects, batch_count: batches.length, results, file_refreshes: fileRefreshes, discipline: disciplineSnapshot() };
+    const reminder = reviewReminder();
+    error.details = { failed_operation_index: currentIndex, ...error.details, operations_applied: results.length, object_operations_applied: appliedObjects, batch_count: batches.length, results, file_refreshes: fileRefreshes, discipline: disciplineSnapshot(), ...(reminder ? { review_reminder: reminder } : {}) };
     throw error;
+  } finally {
+    insideSequence = false;
   }
+  const sequenceReminder = reviewReminder();
   return {
     operations_applied: results.length,
     object_operations_applied: appliedObjects,
@@ -1339,6 +1372,7 @@ async function runSequence(args) {
     file_refresh_strategy: sequenceBackend === "ooxml" ? pacingMode : "not-applicable",
     file_refresh_count: fileRefreshes.length,
     file_refreshes: fileRefreshes,
+    ...(sequenceReminder ? { review_reminder: sequenceReminder } : {}),
     results,
   };
 }

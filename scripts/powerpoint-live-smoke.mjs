@@ -64,7 +64,7 @@ const slidePng = path.join(workDir, "smoke-slide.png");
 const child = spawn(process.execPath, [serverPath], {
   cwd: root,
   stdio: ["pipe", "pipe", "pipe"],
-  env: { ...process.env, SCIENTIFIC_ILLUSTRATOR_FOCUS_POLICY: "preserve" },
+  env: { ...process.env, SCIENTIFIC_ILLUSTRATOR_FOCUS_POLICY: "preserve", SCIENTIFIC_ILLUSTRATOR_REVIEW_DEBT_THRESHOLD: "8" },
 });
 const lines = createInterface({ input: child.stdout });
 let stderr = "";
@@ -639,6 +639,21 @@ try {
     const status = await tool("powerpoint_status", {});
     assert.equal(status.discipline.stale_review, false, "a fresh audit and render clear the review debt");
     return status;
+  });
+
+  await step("review debt triggers a checkpoint reminder", async () => {
+    const operations = Array.from({ length: 8 }, () => ({ type: "update_shape", slide_index: 1, shape_name: "batch_a", text: "c" }));
+    const sequence = await tool("powerpoint_draw_sequence", { pacing_mode: "fast", operations });
+    assert.ok(sequence.review_reminder, "crossing the render-debt threshold must add a checkpoint reminder");
+    assert.equal(sequence.review_reminder.threshold, 8);
+    assert.ok(sequence.review_reminder.mutations_since_last_render >= 8);
+    assert.match(sequence.review_reminder.action, /checkpoint/i);
+    const single = await tool("powerpoint_update_shape", { slide_index: 1, shape_name: "batch_a", fill_color: "FFF2CC" });
+    assert.ok(single.review_reminder, "single mutations keep the reminder while the debt remains");
+    await tool("powerpoint_export_slide_image", { slide_index: 1, output_path: path.join(workDir, "reminder-render.png"), overwrite: true });
+    const cleared = await tool("powerpoint_update_shape", { slide_index: 1, shape_name: "batch_a", fill_color: "E8F0FE" });
+    assert.equal(cleared.review_reminder, undefined, "a fresh render must clear the reminder");
+    return cleared;
   });
 
   console.log("     note: powerpoint_activate_slide intentionally brings the presentation forward once.");
