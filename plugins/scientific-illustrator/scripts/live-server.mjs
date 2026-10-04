@@ -420,11 +420,12 @@ const tools = [
   },
   {
     name: "drawio_live_audit_figure",
-    description: "Run a read-only deterministic geometry, connector, text-fit, repeated-layout, and raster editability audit on the visible draw.io model. Returns named hard failures and correction-oriented findings with stable finding ids and a new/persistent/resolved attribution status from the findings ledger.",
+    description: "Run a read-only deterministic geometry, connector, text-fit, repeated-layout, and raster editability audit on the visible draw.io model. Returns named hard failures and correction-oriented findings with stable finding ids, a new/persistent/resolved attribution status from the findings ledger, and waived/disputed statuses when the figure brief declares intentional deviations or user-approved disputes.",
     inputSchema: {
       type: "object",
       properties: {
-        artifact_path: { type: "string", description: "Absolute path of the .drawio artifact used to locate the findings ledger. Optional; defaults to the file this server launched." },
+        artifact_path: { type: "string", description: "Absolute path of the .drawio artifact used to locate the findings ledger and the figure brief. Optional; defaults to the file this server launched." },
+        brief_path: { type: "string", description: "Absolute path of the figure brief whose intentional deviations and disputes should be applied to this audit. Optional; defaults to the brief resolved from artifact_path." },
         alignment_tolerance: { type: "number", minimum: 0.05, maximum: 100, default: 1 },
         endpoint_clearance: { type: "number", minimum: 0, maximum: 100, default: 2 },
         text_overflow_tolerance: { type: "number", minimum: 0, maximum: 100, default: 2 },
@@ -2168,6 +2169,7 @@ async function handleTool(name, args = {}) {
       const value = await auditFigure(args);
       await annotateAuditResult(value, {
         artifactPath: args.artifact_path || live.lastFilePath || null,
+        briefPath: args.brief_path || null,
         scopeAnchor: "page",
       });
       return { value };

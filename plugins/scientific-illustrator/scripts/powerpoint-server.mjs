@@ -314,13 +314,14 @@ const tools = [
   },
   {
     name: "powerpoint_audit_figure",
-    description: "Run a deterministic geometry, connector, text-fit, repeated-layout, and raster editability audit on one slide. Returns named hard failures and correction-oriented findings with stable finding ids and a new/persistent/resolved attribution status from the findings ledger; it does not modify the presentation. The result carries a `discipline` block so repeated unchanged audits and review debt are measurable.",
+    description: "Run a deterministic geometry, connector, text-fit, repeated-layout, and raster editability audit on one slide. Returns named hard failures and correction-oriented findings with stable finding ids, a new/persistent/resolved attribution status from the findings ledger, and waived/disputed statuses when the figure brief declares intentional deviations or user-approved disputes; it does not modify the presentation. The result carries `summary`, `brief_applied`, `ledger_applied`, and a `discipline` block so repeated unchanged audits and review debt are measurable.",
     inputSchema: {
       type: "object",
       required: ["slide_index"],
       properties: {
         slide_index: { type: "integer", minimum: 1 },
-        artifact_path: { type: "string", description: "Absolute path of the presentation artifact used to locate the findings ledger (and the future brief). Optional; defaults to the file reported by the active backend when it exposes one, so Office.js sessions should pass it explicitly." },
+        artifact_path: { type: "string", description: "Absolute path of the presentation artifact used to locate the findings ledger and the figure brief. Optional; defaults to the file reported by the active backend when it exposes one, so Office.js sessions should pass it explicitly." },
+        brief_path: { type: "string", description: "Absolute path of the figure brief whose intentional deviations and disputes should be applied to this audit. Optional; defaults to the brief resolved from artifact_path." },
         alignment_tolerance: { type: "number", minimum: 0.05, maximum: 50, default: 0.75 },
         endpoint_clearance: { type: "number", minimum: 0, maximum: 100, default: 1.5 },
         text_overflow_tolerance: { type: "number", minimum: 0, maximum: 50, default: 1.5 },
@@ -1196,6 +1197,7 @@ async function runBridge(action, args = {}, forcedBackend = null) {
       const artifactPath = explicitArtifact || value.source_path || value.presentation_path || value.path || null;
       await annotateAuditResult(value, {
         artifactPath,
+        briefPath: typeof effectiveArgs.brief_path === "string" && effectiveArgs.brief_path.trim() ? effectiveArgs.brief_path : null,
         scopeAnchor: `slide:${Number(value.slide_index ?? effectiveArgs.slide_index ?? 1)}`,
         revision: disciplineSnapshot().revision,
       });

@@ -33,6 +33,7 @@ const KNOWN_TOP_LEVEL_FIELDS = new Set([
   "quantities",
   "source_ambiguities",
   "intentional_deviations",
+  "disputes",
   "recreation_policy",
   "acceptance",
   "extensions",
@@ -43,6 +44,45 @@ const KNOWN_TOP_LEVEL_FIELDS = new Set([
 
 function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+// Disposition entries (intentional_deviations, disputes) follow the shared
+// approval vocabulary: "user" is the only approval that can waive a hard
+// finding or dispute an integrity finding; "agent-with-user-ack" records that
+// the agent acted on the user's acknowledgement but is not sufficient for
+// those boundary cases.
+const DISPOSITION_APPROVERS = new Set(["user", "agent-with-user-ack"]);
+
+function requireNonEmptyString(value, label, errors) {
+  if (typeof value !== "string" || !value.trim()) errors.push(`${label} must be a non-empty string.`);
+  return typeof value === "string" && value.trim();
+}
+
+function validateDispositionEntries(list, label, mode, errors) {
+  list.forEach((entry, index) => {
+    const entryLabel = `${label}[${index}]`;
+    if (!isPlainObject(entry)) {
+      errors.push(`${entryLabel} must be an object.`);
+      return;
+    }
+    if (mode === "waiver") {
+      requireNonEmptyString(entry.item, `${entryLabel}.item`, errors);
+      requireNonEmptyString(entry.category, `${entryLabel}.category`, errors);
+    } else {
+      requireNonEmptyString(entry.rule_id, `${entryLabel}.rule_id`, errors);
+    }
+    requireNonEmptyString(entry.reason, `${entryLabel}.reason`, errors);
+    if (entry.id !== undefined) requireNonEmptyString(entry.id, `${entryLabel}.id`, errors);
+    if (entry.item !== undefined) requireNonEmptyString(entry.item, `${entryLabel}.item`, errors);
+    if (entry.rule_version !== undefined) requireNonEmptyString(entry.rule_version, `${entryLabel}.rule_version`, errors);
+    if (mode === "dispute") {
+      if (!DISPOSITION_APPROVERS.has(entry.approved_by)) {
+        errors.push(`${entryLabel}.approved_by must be "user" or "agent-with-user-ack".`);
+      }
+    } else if (entry.approved_by !== undefined && !DISPOSITION_APPROVERS.has(entry.approved_by)) {
+      errors.push(`${entryLabel}.approved_by must be "user" or "agent-with-user-ack" when present.`);
+    }
+  });
 }
 
 // Filesystem-safe slug used for brief file names (<slug>.brief.json). Keeps
@@ -99,9 +139,24 @@ export function validateBrief(document) {
   if (document.figure_kind !== undefined && (typeof document.figure_kind !== "string" || !document.figure_kind.trim())) {
     errors.push("figure_kind must be a non-empty string when present.");
   }
-  for (const key of ["claims", "relations", "quantities", "source_ambiguities", "intentional_deviations"]) {
+  for (const key of ["claims", "relations", "quantities", "source_ambiguities", "intentional_deviations", "disputes"]) {
     if (document[key] !== undefined && !Array.isArray(document[key])) {
       errors.push(`${key} must be an array when present.`);
+    }
+  }
+  if (Array.isArray(document.intentional_deviations)) {
+    validateDispositionEntries(document.intentional_deviations, "intentional_deviations", "waiver", errors);
+  }
+  if (Array.isArray(document.disputes)) {
+    validateDispositionEntries(document.disputes, "disputes", "dispute", errors);
+  }
+  if (isPlainObject(document.acceptance) && document.acceptance.waivable_categories !== undefined) {
+    if (!Array.isArray(document.acceptance.waivable_categories)) {
+      errors.push("acceptance.waivable_categories must be an array of strings when present.");
+    } else {
+      document.acceptance.waivable_categories.forEach((value, index) => {
+        requireNonEmptyString(value, `acceptance.waivable_categories[${index}]`, errors);
+      });
     }
   }
   if (document.recreation_policy !== undefined && !["faithful", "publication-ready"].includes(document.recreation_policy)) {
