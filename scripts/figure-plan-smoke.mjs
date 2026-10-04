@@ -105,6 +105,54 @@ try {
     assert.equal(validatePlan(makePlan({ render_contexts: "publication" })).errors.some((error) => error.includes("render_contexts must be an array")), true);
   });
 
+  await check("render context objects carry target delivery sizes", async () => {
+    const valid = validatePlan(makePlan({ render_contexts: [{ id: "publication", width_mm: 90 }, { id: "thumbnail", width_px: 300 }] }));
+    assert.deepEqual(valid.errors, []);
+    assert.deepEqual(valid.warnings, []);
+    const declaredOnly = validatePlan(makePlan({ render_contexts: [{ id: "screen" }] }));
+    assert.deepEqual(declaredOnly.errors, []);
+    const unknown = validatePlan(makePlan({ render_contexts: [{ id: "billboard", width_px: 300 }] }));
+    assert.deepEqual(unknown.errors, []);
+    assert.equal(unknown.warnings.some((warning) => warning.includes("billboard")), true);
+    assert.equal(
+      validatePlan(makePlan({ render_contexts: [{ id: "publication", width_mm: 90, width_px: 300 }] })).errors.some((error) =>
+        error.includes("both width_mm and width_px")
+      ),
+      true
+    );
+    assert.equal(
+      validatePlan(makePlan({ render_contexts: [{ id: "publication", width_mm: -1 }] })).errors.some((error) => error.includes("width_mm")),
+      true
+    );
+    assert.equal(
+      validatePlan(makePlan({ render_contexts: [{ id: "publication", width_mm: 0 }] })).errors.some((error) => error.includes("width_mm")),
+      true
+    );
+    assert.equal(
+      validatePlan(makePlan({ render_contexts: [{ id: "publication", width_px: -1 }] })).errors.some((error) => error.includes("width_px")),
+      true
+    );
+    assert.equal(
+      validatePlan(makePlan({ render_contexts: [{ id: "publication", width_px: "300" }] })).errors.some((error) => error.includes("width_px")),
+      true
+    );
+    assert.equal(
+      validatePlan(makePlan({ render_contexts: [{ id: "publication", width_px: 0 }] })).errors.some((error) => error.includes("width_px")),
+      true
+    );
+    assert.deepEqual(validatePlan(makePlan({ render_contexts: ["  publication  "] })).warnings, []);
+    assert.equal(
+      validatePlan(makePlan({ render_contexts: [{ width_mm: 90 }] })).errors.some((error) => error.includes("render_contexts[0].id")),
+      true
+    );
+    assert.equal(
+      validatePlan(makePlan({ render_contexts: [42] })).errors.some((error) => error.includes("context id string or an object")),
+      true
+    );
+    const extra = validatePlan(makePlan({ render_contexts: [{ id: "publication", width_mm: 90, note: "x" }] }));
+    assert.equal(extra.warnings.some((warning) => warning.includes("render_contexts[0].note")), true);
+  });
+
   await check("primary_claims rejects non-strings and warns on duplicates", async () => {
     assert.equal(validatePlan(makePlan({ primary_claims: ["c1", 5] })).errors.some((error) => error.includes("primary_claims[1]")), true);
     const { warnings } = validatePlan(makePlan({ primary_claims: ["c1", "c1"] }));

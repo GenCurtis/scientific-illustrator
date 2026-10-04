@@ -29,8 +29,10 @@ import {
 
 export const PLAN_SCHEMA_VERSION = "scientific-illustrator/design-plan@1";
 
-// Render contexts will gain their own precision in the Perceptual QA stage;
-// unknown members warn instead of failing so plans stay forward-compatible.
+// Render contexts (P3): entries are either a bare context id or an object
+// {id, width_mm | width_px} carrying the target delivery size used by
+// Perceptual QA. Unknown members warn instead of failing so plans stay
+// forward-compatible.
 export const KNOWN_RENDER_CONTEXTS = ["publication", "screen", "screen-preview", "thumbnail"];
 
 const KNOWN_PLAN_FIELDS = new Set([
@@ -60,6 +62,15 @@ function requireNonEmptyString(value, label, errors) {
     return false;
   }
   return true;
+}
+
+function warnUnknownRenderContext(id, label, warnings) {
+  const normalized = id.trim();
+  if (!KNOWN_RENDER_CONTEXTS.includes(normalized)) {
+    warnings.push(
+      `${label} "${normalized}" is not one of the known contexts (${KNOWN_RENDER_CONTEXTS.join(", ")}); preserved for forward compatibility.`
+    );
+  }
 }
 
 // Structural problems are errors; forward-compatible surprises are warnings.
@@ -150,11 +161,33 @@ export function validatePlan(document) {
       errors.push("render_contexts must be an array when present.");
     } else {
       document.render_contexts.forEach((context, index) => {
-        if (!requireNonEmptyString(context, `render_contexts[${index}]`, errors)) return;
-        if (!KNOWN_RENDER_CONTEXTS.includes(context)) {
-          warnings.push(
-            `render_contexts[${index}] "${context}" is not one of the known contexts (${KNOWN_RENDER_CONTEXTS.join(", ")}); preserved for forward compatibility.`
-          );
+        const label = `render_contexts[${index}]`;
+        if (typeof context === "string") {
+          if (!requireNonEmptyString(context, label, errors)) return;
+          warnUnknownRenderContext(context, label, warnings);
+          return;
+        }
+        if (!isPlainObject(context)) {
+          errors.push(`${label} must be a context id string or an object with an "id".`);
+          return;
+        }
+        if (!requireNonEmptyString(context.id, `${label}.id`, errors)) return;
+        warnUnknownRenderContext(context.id, label, warnings);
+        const hasMm = context.width_mm !== undefined;
+        const hasPx = context.width_px !== undefined;
+        if (hasMm && hasPx) {
+          errors.push(`${label} must not set both width_mm and width_px.`);
+        }
+        if (hasMm && (typeof context.width_mm !== "number" || !Number.isFinite(context.width_mm) || context.width_mm <= 0)) {
+          errors.push(`${label}.width_mm must be a positive number when present.`);
+        }
+        if (hasPx && (typeof context.width_px !== "number" || !Number.isFinite(context.width_px) || context.width_px <= 0)) {
+          errors.push(`${label}.width_px must be a positive number when present.`);
+        }
+        for (const key of Object.keys(context)) {
+          if (key !== "id" && key !== "width_mm" && key !== "width_px") {
+            warnings.push(`Unknown field "${label}.${key}" was preserved.`);
+          }
         }
       });
     }
