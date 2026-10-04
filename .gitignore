@@ -10,3 +10,6 @@ __pycache__/
 *.drawio
 *.drawio.png
 *.drawio.svg
+
+# Local planning documents (not published)
+docs/planning/

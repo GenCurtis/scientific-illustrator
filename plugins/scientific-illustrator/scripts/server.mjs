@@ -8,6 +8,7 @@ import path from "node:path";
 import os from "node:os";
 import { drawioInstallHint, resolveDrawioExecutable } from "./drawio-path.mjs";
 import { VERSION as SERVER_VERSION, assertAllowedPath, assertAllowedRealPath, atomicWrite } from "./guardrails.mjs";
+import { readFigureBrief, writeFigureBrief } from "./figure-truth.mjs";
 
 const execFileAsync = promisify(execFile);
 const SERVER_NAME = "scientific-illustrator-file-utils";
@@ -283,6 +284,45 @@ const tools = [
       type: "object",
       required: ["input_path"],
       properties: { input_path: { type: "string" } },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "figure_brief_read",
+    description:
+      "Read the persistent figure brief (scientific truth recorded as JSON). Resolution order: explicit brief_path; nearest ancestor '.scientific-illustrator/figures/<slug>.brief.json' above the artifact; sibling '<stem>.si-brief.json' next to the artifact. Returns exists=false and document=null when no brief exists yet; never invents truth.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        artifact_path: {
+          type: "string",
+          description: "Absolute path of the artifact (.drawio/.pptx) that anchors project/sibling brief discovery.",
+        },
+        brief_path: { type: "string", description: "Explicit brief JSON path; overrides discovery." },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "figure_brief_write",
+    description:
+      "Create or update the persistent figure brief. Creation writes revision 0; updates require expected_revision matching the current revision and increment it by 1 (optimistic locking). revision/created_at/updated_at are tool-managed. Unknown fields are preserved and reported in schema_warnings. Same three-level resolution as figure_brief_read.",
+    inputSchema: {
+      type: "object",
+      required: ["document"],
+      properties: {
+        artifact_path: {
+          type: "string",
+          description: "Absolute path of the artifact (.drawio/.pptx) that anchors project/sibling brief discovery.",
+        },
+        brief_path: { type: "string", description: "Explicit brief JSON path; overrides discovery." },
+        document: { type: "object", description: "Full brief document following the brief@1 schema." },
+        expected_revision: {
+          type: "integer",
+          minimum: 0,
+          description: "Current revision when updating; omit only when creating.",
+        },
+      },
       additionalProperties: false,
     },
   },
@@ -986,6 +1026,15 @@ async function handleTool(name, args = {}) {
       child.unref();
       return { opened: true, input_path: input, application: DRAWIO.executable };
     }
+    case "figure_brief_read":
+      return readFigureBrief({ artifactPath: args.artifact_path, briefPath: args.brief_path });
+    case "figure_brief_write":
+      return writeFigureBrief({
+        artifactPath: args.artifact_path,
+        briefPath: args.brief_path,
+        document: args.document,
+        expectedRevision: args.expected_revision,
+      });
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
@@ -1000,7 +1049,7 @@ async function handleMessage(message) {
       protocolVersion,
       capabilities: { tools: { listChanged: false } },
       serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
-      instructions: "This is the post-live draw.io file-utilities server, not the live drawing backend. For Scientific Illustrator work, first use drawio_live_get_capabilities and construct every region visibly with drawio_live_* tools, including local screenshot/correction gates. Use these file utilities only after live cells exist to validate, inspect, export, or repair a saved snapshot, unless the user explicitly requested a non-live file-only workflow. drawio_create_diagram and drawio_write_xml require a declared workflow_context. Never rasterize reconstructable text, shapes, arrows, tables, charts, axes, or legends; every deliverable image cell must be one atomic irreducible raster unit with a specific reason, tight-source/crop audit, contains_reconstructable_content=false, and a decomposition note. Inline HTML/SVG images are rejected because their source and crop cannot be audited. A trace reference overlay is analysis-only and must not remain in the final deliverable.",
+      instructions: "This is the post-live draw.io file-utilities server, not the live drawing backend. For Scientific Illustrator work, first use drawio_live_get_capabilities and construct every region visibly with drawio_live_* tools, including local screenshot/correction gates. Use these file utilities only after live cells exist to validate, inspect, export, or repair a saved snapshot, unless the user explicitly requested a non-live file-only workflow. drawio_create_diagram and drawio_write_xml require a declared workflow_context. Never rasterize reconstructable text, shapes, arrows, tables, charts, axes, or legends; every deliverable image cell must be one atomic irreducible raster unit with a specific reason, tight-source/crop audit, contains_reconstructable_content=false, and a decomposition note. Inline HTML/SVG images are rejected because their source and crop cannot be audited. A trace reference overlay is analysis-only and must not remain in the final deliverable. figure_brief_read/figure_brief_write persist the scientific-truth brief with three-level resolution (explicit path, project .scientific-illustrator/, or sibling); a missing brief is reported as exists=false, never invented.",
     });
   }
   if (method === "ping") return rpcResult(id, {});

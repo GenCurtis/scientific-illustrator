@@ -136,7 +136,13 @@ async function atomicWrite(target, data, mode) {
   await fs.mkdir(parent, { recursive: true });
   const tmp = path.join(parent, `.${path.basename(target)}.${process.pid}.${Date.now().toString(36)}.tmp`);
   await fs.writeFile(tmp, data, mode);
-  await fs.rename(tmp, path.join(parent, path.basename(target)));
+  try {
+    await fs.rename(tmp, path.join(parent, path.basename(target)));
+  } catch (error) {
+    // A failed rename must not leave the temp file behind (e.g. read-only target).
+    await fs.rm(tmp, { force: true }).catch(() => {});
+    throw error;
+  }
 }
 
 export { VERSION, MAX_IMAGE_BYTES, allowedRoot, assertAllowedPath, assertAllowedRealPath, sniffImageMime, atomicWrite };

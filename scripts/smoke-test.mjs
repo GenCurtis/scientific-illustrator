@@ -11,7 +11,7 @@ const servers = [
   },
   {
     file: "plugins/scientific-illustrator/scripts/server.mjs",
-    tools: ["drawio_validate", "drawio_inspect", "drawio_export"],
+    tools: ["drawio_validate", "drawio_inspect", "drawio_export", "figure_brief_read", "figure_brief_write"],
   },
   {
     file: "plugins/scientific-illustrator/scripts/powerpoint-server.mjs",
