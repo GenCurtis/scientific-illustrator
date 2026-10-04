@@ -228,6 +228,9 @@ const SLIDE_ONE_SHAPES = [
   "smoke_conn", "smoke_text", "smoke_equation", "smoke_rect", "smoke_rect2", "smoke_rect3",
   "smoke_rect4", "smoke_rect5", "smoke_line", "smoke_image", "smoke_table", "smoke_chart",
   "batch_a", "batch_b", "batch_link", "batch_c",
+  "equiv_solo_shape", "equiv_solo_target", "equiv_solo_link",
+  "equiv_batch_shape", "equiv_batch_target", "equiv_batch_link",
+  "eq_boundary_before", "eq_boundary_after", "eq_boundary_math",
 ];
 
 let deckName = "";
@@ -526,6 +529,77 @@ try {
     return inspected;
   });
 
+  await step("powerpoint_draw_sequence matches the per-object path (COM equivalence)", async () => {
+    await tool("powerpoint_add_shape", { slide_index: 1, name: "equiv_solo_shape", shape: "rectangle", left: 60, top: 420, width: 90, height: 40, text: "same", fill_color: "D9EAD3" });
+    await tool("powerpoint_add_shape", { slide_index: 1, name: "equiv_solo_target", shape: "rounded_rectangle", left: 200, top: 420, width: 90, height: 40 });
+    await tool("powerpoint_add_connector", { slide_index: 1, name: "equiv_solo_link", source_name: "equiv_solo_shape", target_name: "equiv_solo_target" });
+    await tool("powerpoint_update_shape", { slide_index: 1, shape_name: "equiv_solo_shape", rotation: 5 });
+    const batched = await tool("powerpoint_draw_sequence", {
+      pacing_mode: "fast",
+      operations: [
+        { type: "add_shape", slide_index: 1, name: "equiv_batch_shape", shape: "rectangle", left: 60, top: 420, width: 90, height: 40, text: "same", fill_color: "D9EAD3" },
+        { type: "add_shape", slide_index: 1, name: "equiv_batch_target", shape: "rounded_rectangle", left: 200, top: 420, width: 90, height: 40 },
+        { type: "add_connector", slide_index: 1, name: "equiv_batch_link", source_name: "equiv_batch_shape", target_name: "equiv_batch_target" },
+        { type: "update_shape", slide_index: 1, shape_name: "equiv_batch_shape", rotation: 5 },
+      ],
+    });
+    assert.equal(batched.batches.length, 1, "four fast operations must fit one batch");
+    const inspected = await tool("powerpoint_inspect", { include_text: true, max_shapes_per_slide: 1000 });
+    const byName = new Map(inspected.slides[0].shapes.map((shape) => [shape.shape_name ?? shape.name, shape]));
+    for (const [soloName, batchName] of [
+      ["equiv_solo_shape", "equiv_batch_shape"],
+      ["equiv_solo_target", "equiv_batch_target"],
+      ["equiv_solo_link", "equiv_batch_link"],
+    ]) {
+      const solo = byName.get(soloName);
+      const batch = byName.get(batchName);
+      assert.ok(solo && batch, `missing equivalence pair ${soloName}/${batchName}`);
+      for (const field of ["type_name", "auto_shape_type", "left", "top", "width", "height", "rotation", "text"]) {
+        assert.equal(batch[field], solo[field], `${batchName}.${field} differs from ${soloName}: ${batch[field]} vs ${solo[field]}`);
+      }
+    }
+    return inspected;
+  });
+
+  await step("powerpoint_draw_sequence treats equations as a batch boundary", async () => {
+    const value = await tool("powerpoint_draw_sequence", {
+      pacing_mode: "fast",
+      operations: [
+        { type: "add_shape", slide_index: 1, name: "eq_boundary_before", shape: "rectangle", left: 400, top: 420, width: 70, height: 30 },
+        { type: "add_equation", slide_index: 1, name: "eq_boundary_math", latex: String.raw`a^2 + b^2 = c^2`, left: 500, top: 420, width: 220, height: 40 },
+        { type: "add_shape", slide_index: 1, name: "eq_boundary_after", shape: "rectangle", left: 760, top: 420, width: 70, height: 30 },
+      ],
+    });
+    assert.equal(value.batches.length, 2, "the equation must split COM batches");
+    const equationResult = value.results.find((entry) => entry.type === "add_equation");
+    assert.ok(equationResult, "the equation result is missing from the sequence results");
+    assert.equal(equationResult.result.equation, true);
+    return value;
+  });
+
+  await step("powerpoint_draw_sequence preflight rejects before any mutation", async () => {
+    const before = await tool("powerpoint_inspect", { include_text: false, max_shapes_per_slide: 1000 });
+    await expectToolError("powerpoint_draw_sequence", {
+      pacing_mode: "fast",
+      operations: [
+        { type: "add_shape", slide_index: 1, name: "preflight_ghost", shape: "rectangle", left: 10, top: 10, width: 20, height: 20 },
+        { type: "unsupported_op" },
+      ],
+    }, /Unsupported sequence operation/);
+    const after = await tool("powerpoint_inspect", { include_text: false, max_shapes_per_slide: 1000 });
+    assert.equal(after.slides[0].shape_count, before.slides[0].shape_count, "preflight must reject before mutating the deck");
+    return after;
+  });
+
+  await step("powerpoint_draw_sequence splits batches at checkpoints by default", async () => {
+    const operations = Array.from({ length: 12 }, (_, index) => ({
+      type: "update_shape", slide_index: 1, shape_name: "batch_a", text: "c",
+    }));
+    const value = await tool("powerpoint_draw_sequence", { operations });
+    assert.deepEqual(value.batches.map((batch) => batch.operations_applied), [10, 2], "default checkpoint batches must split at 10 operations");
+    return value;
+  });
+
   await step("powerpoint_inspect", async () => {
     const value = await tool("powerpoint_inspect", { include_text: true });
     assert.equal(value.slide_count, 2);
@@ -582,7 +656,7 @@ try {
     assert.equal(slideOne.charts, 1, "the saved deck must contain the native chart");
     assert.equal(slideOne.pictures, 1, "the saved deck must contain the picture");
     assert.ok(slideOne.autoshapes >= 5, `expected native auto shapes in the saved deck, found ${slideOne.autoshapes}`);
-    assert.ok(report.xml_equations >= 2, `expected native OMML equations in the saved deck, found ${report.xml_equations} math zones`);
+    assert.ok(report.xml_equations >= 3, `expected native OMML equations in the saved deck, found ${report.xml_equations} math zones`);
     return value;
   });
 

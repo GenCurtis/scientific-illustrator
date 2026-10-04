@@ -44,14 +44,14 @@ Produce a `reconstruction_spec` before drawing. It must contain region ids, obje
 1. Detect the selected backend's current capabilities before choosing objects. For live Mac PowerPoint, require a connected `officejs-context-sync` task pane and lock it with `powerpoint_set_backend` before drawing; otherwise report the OOXML fallback instead of promising a live animation.
 2. Connect or create an isolated editable document and inspect its structure. For WPS, require explicit target-application fields and never treat a managed file, helper process, or dispatched open request as proof that the deck is open.
 3. Establish canvas/slide size, panel skeleton, alignment anchors, spacing tokens, and connector lanes.
-4. Draw exactly one logical region from back to front with stable semantic names and nonzero pacing.
+4. Execute the spec in dependency order with stable semantic names and zero artificial delay; use the backend sequence tool with bounded batches (see `edit-powerpoint-live` or `recreate-scientific-figure-in-drawio` for that backend's pacing modes).
 5. Return a `draw_log` containing created/updated object ids, object classes, grouping, and every raster declaration.
 
 Never insert a whole panel merely because cropping is faster or visually convenient.
 
 ## Reviewer handoff
 
-After each region, require both evidence channels:
+After each checkpoint, require both evidence channels:
 
 - structure evidence from `powerpoint_audit_figure` or `drawio_live_audit_figure` plus inspection;
 - renderer evidence from a PowerPoint slide export or draw.io screenshot, compared with the matching reference crop.
@@ -70,22 +70,20 @@ Review semantics, text, editability, raster atomicity, geometry, spacing, typogr
 
 Give Reviewer findings to `$correct-scientific-figure`. Require an ordered object-level `correction_plan`; then return it to the same backend Drawer. Correct the smallest responsible objects. Do not flatten, screenshot, or replace a larger region to hide a defect.
 
-## Mandatory local loop
+## Checkpoint loop
 
-For each region, repeat:
+At each meaningful checkpoint (a bounded batch that completes a coherent module, before replicating a new motif, and after routing, grouping, or z-order changes), repeat:
 
-1. Drawer constructs or updates named editable objects.
-2. Drawer renders the current whole slide/canvas context.
-3. Reviewer inspects structure and render.
-4. If any finding remains, Corrector emits exact operations.
-5. Drawer executes them and rerenders.
-6. Reviewer audits again.
+1. Drawer constructs or updates named editable objects in bounded zero-delay batches.
+2. Drawer renders the affected whole slide/canvas context once.
+3. Reviewer inspects structure and render; Corrector emits exact operations only for defective objects and their dependencies.
+4. Drawer executes them and rerenders the affected content.
 
-Do not start the next region until the current region has no unresolved finding except a clearly documented source ambiguity.
+Unchanged, already accepted modules do not need another local review; they are still included in the final whole-figure check. Do not proceed past a checkpoint while a changed module has an unresolved hard failure except a documented source ambiguity.
 
-## Whole-figure loop
+## Whole-figure review
 
-After all regions pass locally, repeat the same loop for the complete figure. Check cross-region alignment, scale, hierarchy, whitespace, palette, font metrics, routing lanes, global balance, object hierarchy, and reference similarity.
+After the checkpoints pass, repeat the same review for the complete figure. Check cross-region alignment, scale, hierarchy, whitespace, palette, font metrics, routing lanes, global balance, object hierarchy, and reference similarity.
 
 Finish only when:
 
