@@ -44,6 +44,12 @@ function trimTerminalPunctuation(text) {
   return text.trim().replace(/[.。!?！？;；]+$/u, "");
 }
 
+// Chooses a/an from the first letter so drafts read correctly for
+// vowel-initial phrases ("an experimental workflow", "an iterative layout").
+function withArticle(phrase) {
+  return `${/^[aeiou]/i.test(phrase) ? "an" : "a"} ${phrase}`;
+}
+
 // A claim is descriptive only when it still carries letters, digits, or CJK
 // characters after trimming. Claims made of pure punctuation (including
 // ellipses and dashes outside the trim set) must not produce "It shows ."
@@ -68,7 +74,8 @@ export function generateAltText({ brief, plan = null, options = {} } = {}) {
   const kindPhrase = kind ? KIND_PHRASES[kind] || `${kind.replace(/-/g, " ")} figure` : "scientific figure";
   const planUsed = isPlainObject(plan);
   const archetype = planUsed && isNonEmptyString(plan.archetype) ? plan.archetype.trim() : null;
-  sentences.push(`A ${kindPhrase}${archetype ? ` organized as a ${archetype} layout` : ""}.`);
+  const opening = `${withArticle(kindPhrase)}${archetype ? ` organized as ${withArticle(`${archetype} layout`)}` : ""}.`;
+  sentences.push(opening.charAt(0).toUpperCase() + opening.slice(1));
 
   const claimsById = new Map();
   if (Array.isArray(brief.claims)) {

@@ -35,6 +35,14 @@ if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(manifest.ve
   throw new Error("Manifest version is not valid semantic versioning.");
 }
 if (rootPackage.version !== manifest.version) throw new Error("Package and plugin versions differ.");
+const changelogText = await fs.readFile(path.join(root, "CHANGELOG.md"), "utf8");
+const changelogVersionPattern = new RegExp(
+  `^##\\s+${manifest.version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![0-9A-Za-z.-])`,
+  "m"
+);
+if (!changelogVersionPattern.test(changelogText)) {
+  throw new Error("CHANGELOG.md must contain an entry for the current release version.");
+}
 if (manifest.repository !== "https://github.com/GenCurtis/scientific-illustrator") {
   throw new Error("Manifest repository URL is incorrect.");
 }

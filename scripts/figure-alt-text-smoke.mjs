@@ -80,6 +80,16 @@ try {
     assert.deepEqual(draft.warnings, []);
   });
 
+  await check("vowel-initial kind and archetype phrases take an", () => {
+    const draft = generateAltText({
+      brief: makeBrief({ figure_kind: "experimental-workflow" }),
+      plan: makePlan({ figure_kind: "experimental-workflow", archetype: "iterative" }),
+    });
+    assert.match(draft.alt_text, /An experimental workflow organized as an iterative layout\./);
+    const image = generateAltText({ brief: makeBrief({ figure_kind: "image-panel" }) });
+    assert.match(image.alt_text, /An image panel\./);
+  });
+
   await check("terminal punctuation is trimmed before joining statements", async () => {
     const brief = makeBrief({ claims: [{ id: "c1", statement: "Trailing dot." }] });
     const draft = generateAltText({ brief });
