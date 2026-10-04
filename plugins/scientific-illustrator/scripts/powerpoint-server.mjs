@@ -92,6 +92,51 @@ let lockedBackend = null;
 let lockedHost = null;
 let mutationCount = 0;
 
+// Session-level workflow discipline counters. Every content mutation advances
+// the revision (mutationCount). Evidence tools record the revision and scope
+// they last observed, so repeating an unchanged review becomes measurable
+// instead of silently wasted, and review debt after mutations stays visible.
+const EVIDENCE_SCOPES = {
+  inspect: (args) => `slides:${args.max_slides ?? "all"}`,
+  audit_figure: (args) => `slide:${args.slide_index ?? "all"}`,
+  export_slide_image: (args) => `slide:${args.slide_index ?? 1}`,
+};
+const evidenceState = {};
+for (const key of Object.keys(EVIDENCE_SCOPES)) {
+  evidenceState[key] = { revision: null, scope: null, calls: 0, redundant: 0 };
+}
+
+function resetDisciplineCounters() {
+  for (const key of Object.keys(evidenceState)) {
+    evidenceState[key] = { revision: null, scope: null, calls: 0, redundant: 0 };
+  }
+}
+
+function disciplineSnapshot() {
+  const since = (key) => (evidenceState[key].revision === null ? mutationCount : mutationCount - evidenceState[key].revision);
+  return {
+    revision: mutationCount,
+    redundant_inspects: evidenceState.inspect.redundant,
+    redundant_audits: evidenceState.audit_figure.redundant,
+    redundant_renders: evidenceState.export_slide_image.redundant,
+    mutations_since_last_inspect: since("inspect"),
+    mutations_since_last_audit: since("audit_figure"),
+    mutations_since_last_render: since("export_slide_image"),
+    stale_review: since("audit_figure") > 0 || since("export_slide_image") > 0,
+  };
+}
+
+function recordEvidenceCall(action, args) {
+  const record = evidenceState[action];
+  const scope = EVIDENCE_SCOPES[action](args || {});
+  const unchanged = record.calls > 0 && record.revision === mutationCount && record.scope === scope;
+  record.calls += 1;
+  if (unchanged) record.redundant += 1;
+  record.revision = mutationCount;
+  record.scope = scope;
+  return { ...disciplineSnapshot(), unchanged_since_last_call: unchanged };
+}
+
 const positionProperties = {
   left: { type: "number", minimum: -100000, maximum: 100000, description: "Left position in points (72 points = 1 inch)." },
   top: { type: "number", minimum: -100000, maximum: 100000, description: "Top position in points." },
@@ -140,7 +185,7 @@ const tools = [
   reconstructionPlanTool("powerpoint_plan_reconstruction"),
   {
     name: "powerpoint_status",
-    description: "Check Microsoft PowerPoint or WPS Presentation availability and the current managed presentation. Windows PowerPoint prefers COM; Mac PowerPoint prefers a connected Office.js task pane with per-object context.sync; WPS and unconnected Mac PowerPoint use the editable OOXML fallback. This is read-only.",
+    description: "Check Microsoft PowerPoint or WPS Presentation availability and the current managed presentation. Windows PowerPoint prefers COM; Mac PowerPoint prefers a connected Office.js task pane with per-object context.sync; WPS and unconnected Mac PowerPoint use the editable OOXML fallback. This is read-only and includes the session `discipline` counters (revision, redundant reviews, review debt).",
     inputSchema: {
       type: "object",
       properties: {
@@ -231,7 +276,7 @@ const tools = [
   },
   {
     name: "powerpoint_inspect",
-    description: "Inspect the active presentation, slide dimensions, and a compact inventory of slides and native shapes without changing the deck.",
+    description: "Inspect the active presentation, slide dimensions, and a compact inventory of slides and native shapes without changing the deck. The result carries a `discipline` block: `unchanged_since_last_call=true` means nothing changed since the previous same-scope inspect, and the counters expose repeated unchanged reviews.",
     inputSchema: {
       type: "object",
       properties: {
@@ -244,7 +289,7 @@ const tools = [
   },
   {
     name: "powerpoint_audit_figure",
-    description: "Run a deterministic geometry, connector, text-fit, repeated-layout, and raster editability audit on one slide. Returns named hard failures and correction-oriented findings; it does not modify the presentation.",
+    description: "Run a deterministic geometry, connector, text-fit, repeated-layout, and raster editability audit on one slide. Returns named hard failures and correction-oriented findings; it does not modify the presentation. The result carries a `discipline` block so repeated unchanged audits and review debt are measurable.",
     inputSchema: {
       type: "object",
       required: ["slide_index"],
@@ -723,7 +768,7 @@ const tools = [
   },
   {
     name: "powerpoint_export_slide_image",
-    description: "Export one slide through PowerPoint's renderer to PNG or JPG and return it for visual inspection.",
+    description: "Export one slide through PowerPoint's renderer to PNG or JPG and return it for visual inspection. The result carries a `discipline` block: `unchanged_since_last_call=true` means the same slide was rendered at the same revision already, and `mutations_since_last_render` shows review debt after edits.",
     inputSchema: {
       type: "object",
       required: ["slide_index", "output_path"],
@@ -1099,6 +1144,7 @@ async function runBridge(action, args = {}, forcedBackend = null) {
     lockedHost = lockedHost || selectedHost;
   }
   if (MUTATING_ACTIONS.has(action)) mutationCount += action === "draw_batch" ? Number(value?.operations_applied || 0) : 1;
+  if (action === "new_presentation" || action === "close_presentation") resetDisciplineCounters();
   if (value && typeof value === "object") {
     value.focus_policy = focusPolicy;
     value.backend_selection = {
@@ -1109,6 +1155,11 @@ async function runBridge(action, args = {}, forcedBackend = null) {
       host_preference: hostPreference,
       mutation_count: mutationCount,
     };
+    if (EVIDENCE_SCOPES[action]) {
+      value.discipline = recordEvidenceCall(action, effectiveArgs);
+    } else if (action === "status") {
+      value.discipline = disciplineSnapshot();
+    }
     if (action === "status" || action === "capabilities") {
       value.officejs_live = await officeJsStatus(0);
     }
@@ -1268,7 +1319,7 @@ async function runSequence(args) {
     } catch (refreshError) {
       error.message = `${error.message}; final OOXML refresh also failed: ${refreshError.message}`;
     }
-    error.details = { failed_operation_index: currentIndex, ...error.details, operations_applied: results.length, object_operations_applied: appliedObjects, batch_count: batches.length, results, file_refreshes: fileRefreshes };
+    error.details = { failed_operation_index: currentIndex, ...error.details, operations_applied: results.length, object_operations_applied: appliedObjects, batch_count: batches.length, results, file_refreshes: fileRefreshes, discipline: disciplineSnapshot() };
     throw error;
   }
   return {
@@ -1283,6 +1334,7 @@ async function runSequence(args) {
     batch_count: batches.length,
     batches,
     elapsed_ms: Date.now() - started,
+    discipline: disciplineSnapshot(),
     context_sync_acknowledged_per_operation: sequenceBackend === "officejs",
     file_refresh_strategy: sequenceBackend === "ooxml" ? pacingMode : "not-applicable",
     file_refresh_count: fileRefreshes.length,

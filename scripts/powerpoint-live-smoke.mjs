@@ -620,6 +620,27 @@ try {
     return value;
   });
 
+  await step("discipline counters detect repeated unchanged reviews", async () => {
+    const inspectOne = await tool("powerpoint_inspect", { include_text: false, max_shapes_per_slide: 1000 });
+    const inspectTwo = await tool("powerpoint_inspect", { include_text: false, max_shapes_per_slide: 1000 });
+    assert.equal(inspectTwo.discipline.unchanged_since_last_call, true, "a repeated unchanged inspect must be flagged");
+    assert.equal(inspectTwo.discipline.redundant_inspects, inspectOne.discipline.redundant_inspects + 1);
+    const renderPath = path.join(workDir, "discipline-render.png");
+    const renderOne = await tool("powerpoint_export_slide_image", { slide_index: 1, output_path: renderPath, overwrite: true });
+    const renderTwo = await tool("powerpoint_export_slide_image", { slide_index: 1, output_path: renderPath, overwrite: true });
+    assert.equal(renderTwo.discipline.unchanged_since_last_call, true, "a repeated unchanged render must be flagged");
+    assert.equal(renderTwo.discipline.redundant_renders, renderOne.discipline.redundant_renders + 1);
+    await tool("powerpoint_update_shape", { slide_index: 1, shape_name: "batch_a", fill_color: "F4CCCC" });
+    const renderThree = await tool("powerpoint_export_slide_image", { slide_index: 1, output_path: renderPath, overwrite: true });
+    assert.equal(renderThree.discipline.unchanged_since_last_call, false, "a render after a mutation is fresh");
+    assert.equal(renderThree.discipline.mutations_since_last_render, 0);
+    assert.equal(renderThree.discipline.stale_review, true, "the earlier audit is stale after the mutation");
+    await tool("powerpoint_audit_figure", { slide_index: 1 });
+    const status = await tool("powerpoint_status", {});
+    assert.equal(status.discipline.stale_review, false, "a fresh audit and render clear the review debt");
+    return status;
+  });
+
   console.log("     note: powerpoint_activate_slide intentionally brings the presentation forward once.");
   await step("powerpoint_activate_slide", async () => {
     const value = await tool("powerpoint_activate_slide", { slide_index: 1 });

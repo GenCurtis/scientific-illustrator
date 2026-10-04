@@ -34,6 +34,7 @@ const requiredBySkill = {
     "checkpoint",
     "correction attempts",
     "reuse the verified motif",
+    "unchanged_since_last_call",
   ],
   "recreate-scientific-figure": ["zero artificial delay", "bounded batches", "checkpoint"],
 };
@@ -107,7 +108,10 @@ try {
   assert.ok(planner.inputSchema.required.includes("reference_size") && planner.inputSchema.required.includes("modules"));
 
   assert.ok(byName.get("powerpoint_add_equation"), "powerpoint_add_equation is missing from the MCP surface");
-  console.log("workflow contract: MCP schemas keep zero-delay bounded batches, planner vocabulary, and equation tooling.");
+  for (const evidenceTool of ["powerpoint_inspect", "powerpoint_audit_figure", "powerpoint_export_slide_image", "powerpoint_status"]) {
+    assert.match(byName.get(evidenceTool).description, /discipline/i, `${evidenceTool} must document the discipline counters`);
+  }
+  console.log("workflow contract: MCP schemas keep zero-delay bounded batches, planner vocabulary, equation tooling, and discipline counters.");
 } finally {
   lines.close();
   child.kill();

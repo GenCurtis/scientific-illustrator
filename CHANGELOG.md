@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.4-gcSIfix-4 — 2026-10-04
+
+- Session discipline counters: the server tracks a content revision (advanced by every mutation, exact for batches via `operations_applied`) and, for each evidence tool (`powerpoint_inspect`, `powerpoint_audit_figure`, `powerpoint_export_slide_image`), the revision and scope last observed. Results and `powerpoint_status` carry a `discipline` block with `unchanged_since_last_call`, `redundant_inspects/audits/renders`, `mutations_since_last_inspect/audit/render`, and `stale_review`. Repeating an unchanged review is counted instead of silently wasted; review debt after edits stays visible. Different scopes are never counted redundant, and counters reset on new/closed presentations.
+- New CI-safe `scripts/discipline-counter-smoke.mjs` (OOXML, no application needed) plus a COM live-suite step verify counting, scope handling, batch revision math, and review-debt clearing. The workflow contract lint now requires the skill to document the counters.
+
 ## 1.5.4-gcSIfix-3 — 2026-10-04
 
 - PowerPoint-only port of upstream PR #17 (v1.6.0) runtime pieces: bounded OOXML draw batches with one Python process and one PPTX load/save per batch, successful-prefix recovery on failure, stdin payloads for large UTF-8 batches, zero-delay sequence default, preflight sequence validation, and the read-only `powerpoint_plan_reconstruction` routing planner. Draw.io and macOS parts are intentionally not imported.
