@@ -1,0 +1,25 @@
+{
+  "schema": "scientific-illustrator/venue-spec@1",
+  "id": "egu-ga-baseline",
+  "venue": "egu-ga",
+  "source": {
+    "authority": "EGU26 General Assembly poster presenter guidelines",
+    "checked_at": "2026-10-04",
+    "retrieved_by": "agent web verification",
+    "source_urls": [
+      "https://www.egu26.eu/authors/presenters/poster_presenter_guidelines.html",
+      "https://www.egu26.eu/authors/presenters.html"
+    ]
+  },
+  "scope": {
+    "profile": ["poster", "slides"]
+  },
+  "rules": {
+    "min_font_pt": 16,
+    "accessibility": {
+      "non_color_encoding": true
+    }
+  },
+  "confidence": { "level": "official-guidelines" },
+  "refresh": { "strategy": "manual-annual", "stale_after_days": 365 }
+}

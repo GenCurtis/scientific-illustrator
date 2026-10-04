@@ -122,6 +122,8 @@ const KNOWN_TOP_LEVEL_FIELDS = new Set([
   "disputes",
   "recreation_policy",
   "acceptance",
+  "accessibility",
+  "provenance",
   "extensions",
   "revision",
   "created_at",
@@ -283,6 +285,56 @@ function validateSourceAmbiguities(ambiguities, inventoryIds, errors, warnings) 
   });
 }
 
+// P4 reserved blocks. accessibility.alt_text stores the generated figure
+// description (drafts come from figure-alt-text.mjs); provenance records the
+// source and processing history of raster assets. Detector work that consumes
+// provenance is deliberately out of scope for now: the schema must not block
+// it later, but nothing here inspects actual images.
+function validateAccessibility(value, errors, warnings) {
+  if (!isPlainObject(value)) {
+    errors.push("accessibility must be an object when present.");
+    return;
+  }
+  if (value.alt_text !== undefined) {
+    requireNonEmptyString(value.alt_text, "accessibility.alt_text", errors);
+  }
+  for (const key of Object.keys(value)) {
+    if (key !== "alt_text") {
+      warnings.push(`accessibility.${key} is not part of the reserved accessibility block; preserved for forward compatibility.`);
+    }
+  }
+}
+
+function validateProvenance(value, errors, warnings) {
+  if (!isPlainObject(value)) {
+    errors.push("provenance must be an object when present.");
+    return;
+  }
+  const known = new Set(["source_type", "source_file", "processing", "crop", "license"]);
+  if (value.source_type !== undefined) {
+    requireNonEmptyString(value.source_type, "provenance.source_type", errors);
+  }
+  for (const key of ["source_file", "crop", "license"]) {
+    if (value[key] !== undefined && value[key] !== null) {
+      requireNonEmptyString(value[key], `provenance.${key}`, errors);
+    }
+  }
+  if (value.processing !== undefined) {
+    if (!Array.isArray(value.processing)) {
+      errors.push("provenance.processing must be an array of strings when present.");
+    } else {
+      value.processing.forEach((step, index) => {
+        requireNonEmptyString(step, `provenance.processing[${index}]`, errors);
+      });
+    }
+  }
+  for (const key of Object.keys(value)) {
+    if (!known.has(key)) {
+      warnings.push(`provenance.${key} is not part of the reserved provenance schema; preserved for forward compatibility.`);
+    }
+  }
+}
+
 // Filesystem-safe slug used for brief file names (<slug>.brief.json). Keeps
 // the identification readable for humans while stripping path-hostile
 // characters on every supported platform. Long stems are truncated with a
@@ -395,6 +447,12 @@ export function validateBrief(document) {
   }
   if (document.recreation_policy !== undefined && !["faithful", "publication-ready"].includes(document.recreation_policy)) {
     errors.push('recreation_policy must be "faithful" or "publication-ready" when present.');
+  }
+  if (document.accessibility !== undefined) {
+    validateAccessibility(document.accessibility, errors, warnings);
+  }
+  if (document.provenance !== undefined) {
+    validateProvenance(document.provenance, errors, warnings);
   }
   if (!Array.isArray(document.inventory)) {
     errors.push("inventory must be an array.");

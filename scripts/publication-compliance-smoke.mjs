@@ -126,6 +126,23 @@ await check("validatePublisherSpec hardens reserved keys, unknown booleans, and 
   assert.ok(warnings.some((message) => message.includes("literal dot")));
 });
 
+await check("publisher validation messages survive the shared-spec refactor", () => {
+  const bad = baseSpec();
+  bad.schema = "scientific-illustrator/publisher-spec@2";
+  delete bad.publisher;
+  const { errors } = validatePublisherSpec(bad, { slug: "example", file: "baseline.json" });
+  assert.ok(errors.includes('schema must be "scientific-illustrator/publisher-spec@1".'));
+  assert.ok(errors.includes("publisher must be a non-empty string."));
+  const prefixed = validatePublisherSpec(baseSpec({ id: "other-baseline" }), { slug: "example", file: "baseline.json" });
+  assert.ok(prefixed.warnings.includes('id "other-baseline" does not start with the publisher slug "example-".'));
+  const unknown = validatePublisherSpec(baseSpec({ mystery: 1 }), { slug: "example", file: "baseline.json" });
+  assert.ok(unknown.warnings.includes('unknown field "mystery" is preserved but not part of publisher-spec@1.'));
+  const noAuthority = baseSpec();
+  delete noAuthority.source.authority;
+  const missingAuthority = validatePublisherSpec(noAuthority, { slug: "example", file: "baseline.json" });
+  assert.ok(missingAuthority.errors.includes("source.authority must be a non-empty string."));
+});
+
 await check("loadPublisherSpecs rejects duplicate spec ids in one publisher directory", async () => {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "sci-illu-pubdup-"));
   try {
@@ -363,9 +380,9 @@ try {
   const list = await request("tools/list", {});
   const names = list.tools.map((tool) => tool.name);
 
-  await check("MCP tools/list exposes exactly 20 tools including the three compliance tools", () => {
-    assert.equal(list.tools.length, 20);
-    for (const name of ["figure_rules_resolve", "publisher_spec_get", "publisher_spec_resolve"]) {
+  await check("MCP tools/list exposes exactly 22 tools including the compliance, venue, and alt-text tools", () => {
+    assert.equal(list.tools.length, 22);
+    for (const name of ["figure_rules_resolve", "publisher_spec_get", "publisher_spec_resolve", "venue_spec_get", "figure_alt_text_generate"]) {
       assert.ok(names.includes(name), `${name} must be listed`);
     }
   });

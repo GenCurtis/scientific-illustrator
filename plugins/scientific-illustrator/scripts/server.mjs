@@ -12,7 +12,8 @@ import { readFigureBrief, writeFigureBrief } from "./figure-truth.mjs";
 import { readFigureStyle, writeFigureStyle } from "./figure-style.mjs";
 import { readFigureKind, readProfileKnowledge } from "./figure-knowledge.mjs";
 import { readFigurePlan, writeFigurePlan } from "./figure-plan.mjs";
-import { getPublisherSpecDocument, resolveFigureRules, resolvePublisherSpecs } from "./publication-compliance.mjs";
+import { generateAltText } from "./figure-alt-text.mjs";
+import { getPublisherSpecDocument, getVenueSpecDocument, resolveFigureRules, resolvePublisherSpecs } from "./publication-compliance.mjs";
 
 const execFileAsync = promisify(execFile);
 const SERVER_NAME = "scientific-illustrator-file-utils";
@@ -476,7 +477,7 @@ const tools = [
         },
         venue: {
           type: "string",
-          description: "Optional journal/venue name; v1 ships no venue adapters, so a venue is reported as unknown instead of silently ignored.",
+          description: "Optional venue id; installed adapters: egu-ga (EGU General Assembly). Unknown venues are reported as unknown instead of silently ignored.",
         },
         style_id: {
           type: "string",
@@ -526,6 +527,45 @@ const tools = [
         profile: {
           type: "string",
           description: "Optional design profile filter; without it all installed specs for the publisher are merged.",
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "venue_spec_get",
+    description:
+      "Read raw bundled venue specification documents (machine-readable JSON plus the adapter README) for human review and audit. Installed venues: egu-ga (EGU General Assembly; poster boards 1978x1183 mm landscape, one-page PDF upload, minimum font size 16 pt). Optional spec_id selects one file (e.g. egu-ga-poster). Unknown venues are reported by figure_rules_resolve as unknown rather than guessed.",
+    inputSchema: {
+      type: "object",
+      required: ["venue"],
+      properties: {
+        venue: {
+          type: "string",
+          description: "Venue id; installed adapters: egu-ga.",
+        },
+        spec_id: {
+          type: "string",
+          description: "Optional exact spec id, e.g. egu-ga-baseline or egu-ga-poster.",
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "figure_alt_text_generate",
+    description:
+      "Generate a deterministic first-draft alt text (figure description) from the brief's claims and inventory plus the design plan (archetype, reading order, primary claims). The draft never invents content: missing sections are reported in warnings, and the sources block records exactly which claims, panels, and labels were used. It does not write to the brief; store the reviewed draft in accessibility.alt_text (or a manuscript description field) after human review.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        artifact_path: {
+          type: "string",
+          description: "Absolute path of the artifact (.drawio/.pptx) that anchors brief and plan discovery.",
+        },
+        brief_path: {
+          type: "string",
+          description: "Explicit brief JSON path; the plan is resolved next to it.",
         },
       },
       additionalProperties: false,
@@ -1276,6 +1316,18 @@ async function handleTool(name, args = {}) {
       return getPublisherSpecDocument({ publisher: args.publisher, specId: args.spec_id });
     case "publisher_spec_resolve":
       return resolvePublisherSpecs({ publisher: args.publisher, profile: args.profile });
+    case "venue_spec_get":
+      return getVenueSpecDocument({ venue: args.venue, specId: args.spec_id });
+    case "figure_alt_text_generate": {
+      const brief = await readFigureBrief({ artifactPath: args.artifact_path, briefPath: args.brief_path });
+      if (!brief.exists) {
+        throw new Error(
+          `No figure brief was found (${brief.resolved_path}); write the brief before generating alt text.`
+        );
+      }
+      const plan = await readFigurePlan({ artifactPath: args.artifact_path, briefPath: args.brief_path });
+      return generateAltText({ brief: brief.document, plan: plan.exists ? plan.document : null });
+    }
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
@@ -1290,7 +1342,7 @@ async function handleMessage(message) {
       protocolVersion,
       capabilities: { tools: { listChanged: false } },
       serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
-      instructions: "This is the post-live draw.io file-utilities server, not the live drawing backend. For Scientific Illustrator work, first use drawio_live_get_capabilities and construct every region visibly with drawio_live_* tools, including local screenshot/correction gates. Use these file utilities only after live cells exist to validate, inspect, export, or repair a saved snapshot, unless the user explicitly requested a non-live file-only workflow. drawio_create_diagram and drawio_write_xml require a declared workflow_context. Never rasterize reconstructable text, shapes, arrows, tables, charts, axes, or legends; every deliverable image cell must be one atomic irreducible raster unit with a specific reason, tight-source/crop audit, contains_reconstructable_content=false, and a decomposition note. Inline HTML/SVG images are rejected because their source and crop cannot be audited. A trace reference overlay is analysis-only and must not remain in the final deliverable. figure_brief_read/figure_brief_write persist the scientific-truth brief with three-level resolution (explicit path, project .scientific-illustrator/, or sibling); a missing brief is reported as exists=false, never invented, and brief reads/writes return recreation_gate (unresolved ambiguity under the declared recreation policy). figure_style_read/figure_style_write persist the shared manuscript style contract (including semantic_styles) with the same resolution and optimistic locking. figure_profile_get returns a design profile's quality rules plus its machine-readable default parameters; figure_kind_get returns the grammar page for a figure kind (primitives, archetypes, encoding, failure modes, boundaries). figure_plan_read/figure_plan_write persist the design plan (kind, archetype, reading order, encoding, hierarchy, layout constraints, render contexts); plans are regenerable, never carry truth, and resolve next to an explicit brief_path or through the same three-level artifact discovery. figure_rules_resolve resolves the publication-compliance chain (user overrides > venue > publisher spec > profile defaults) with per-token provenance and freshness warnings; publisher_spec_get returns raw bundled publisher specs (acm, elsevier, ieee, springer-nature) for human review; publisher_spec_resolve resolves the publisher layer alone.",
+      instructions: "This is the post-live draw.io file-utilities server, not the live drawing backend. For Scientific Illustrator work, first use drawio_live_get_capabilities and construct every region visibly with drawio_live_* tools, including local screenshot/correction gates. Use these file utilities only after live cells exist to validate, inspect, export, or repair a saved snapshot, unless the user explicitly requested a non-live file-only workflow. drawio_create_diagram and drawio_write_xml require a declared workflow_context. Never rasterize reconstructable text, shapes, arrows, tables, charts, axes, or legends; every deliverable image cell must be one atomic irreducible raster unit with a specific reason, tight-source/crop audit, contains_reconstructable_content=false, and a decomposition note. Inline HTML/SVG images are rejected because their source and crop cannot be audited. A trace reference overlay is analysis-only and must not remain in the final deliverable. figure_brief_read/figure_brief_write persist the scientific-truth brief with three-level resolution (explicit path, project .scientific-illustrator/, or sibling); a missing brief is reported as exists=false, never invented, and brief reads/writes return recreation_gate (unresolved ambiguity under the declared recreation policy). figure_style_read/figure_style_write persist the shared manuscript style contract (including semantic_styles) with the same resolution and optimistic locking. figure_profile_get returns a design profile's quality rules plus its machine-readable default parameters; figure_kind_get returns the grammar page for a figure kind (primitives, archetypes, encoding, failure modes, boundaries). figure_plan_read/figure_plan_write persist the design plan (kind, archetype, reading order, encoding, hierarchy, layout constraints, render contexts); plans are regenerable, never carry truth, and resolve next to an explicit brief_path or through the same three-level artifact discovery. figure_rules_resolve resolves the publication-compliance chain (user overrides > venue > publisher spec > profile defaults) with per-token provenance and freshness warnings; publisher_spec_get returns raw bundled publisher specs (acm, elsevier, ieee, springer-nature) for human review; publisher_spec_resolve resolves the publisher layer alone; venue_spec_get returns raw bundled venue adapters (egu-ga) for human review, and installed venue adapters join the resolver chain ahead of the publisher layer. figure_alt_text_generate composes a deterministic first-draft figure description from the brief's claims and inventory plus the plan, reports what it used, never invents content, and does not write to the brief.",
     });
   }
   if (method === "ping") return rpcResult(id, {});

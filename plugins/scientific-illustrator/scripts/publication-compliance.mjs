@@ -31,6 +31,15 @@ export const KNOWN_COMPARISONS = ["greater-than", "greater-than-or-equal"];
 
 const PUBLISHERS_DIRECTORY = new URL("../references/publishers/", import.meta.url);
 
+export const VENUE_SPEC_SCHEMA_VERSION = "scientific-illustrator/venue-spec@1";
+
+// Installed venue adapters. Keep this list in sync with references/venues/
+// (validate-repo enforces the bidirectional match). Unknown venues are not an
+// error: the resolver keeps the publisher baseline and reports the gap.
+export const KNOWN_VENUES = ["egu-ga"];
+
+const VENUES_DIRECTORY = new URL("../references/venues/", import.meta.url);
+
 function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -82,22 +91,26 @@ function walkRuleKeys(value, path, visit) {
   }
 }
 
-export function validatePublisherSpec(spec, { slug, file } = {}) {
+function validateSpec(spec, { kind, slug, file } = {}) {
   const errors = [];
   const warnings = [];
+  const isVenue = kind === "venue";
+  const schemaVersion = isVenue ? VENUE_SPEC_SCHEMA_VERSION : PUBLISHER_SPEC_SCHEMA_VERSION;
+  const identityField = isVenue ? "venue" : "publisher";
+  const slugLabel = isVenue ? "venue" : "publisher";
   if (!isPlainObject(spec)) {
     errors.push("spec must be a JSON object.");
     return { errors, warnings };
   }
-  if (spec.schema !== PUBLISHER_SPEC_SCHEMA_VERSION) {
-    errors.push(`schema must be "${PUBLISHER_SPEC_SCHEMA_VERSION}".`);
+  if (spec.schema !== schemaVersion) {
+    errors.push(`schema must be "${schemaVersion}".`);
   }
   if (!isNonEmptyString(spec.id)) {
     errors.push("id must be a non-empty string.");
   } else if (isNonEmptyString(slug) && !spec.id.startsWith(`${slug}-`)) {
-    warnings.push(`id "${spec.id}" does not start with the publisher slug "${slug}-".`);
+    warnings.push(`id "${spec.id}" does not start with the ${slugLabel} slug "${slug}-".`);
   }
-  if (!isNonEmptyString(spec.publisher)) errors.push("publisher must be a non-empty string.");
+  if (!isNonEmptyString(spec[identityField])) errors.push(`${identityField} must be a non-empty string.`);
 
   if (!isPlainObject(spec.source)) {
     errors.push("source must be an object.");
@@ -168,35 +181,50 @@ export function validatePublisherSpec(spec, { slug, file } = {}) {
     }
   }
 
-  const knownTopLevel = new Set(["schema", "id", "publisher", "source", "scope", "rules", "confidence", "refresh", "extensions"]);
+  const knownTopLevel = new Set(["schema", "id", identityField, "source", "scope", "rules", "confidence", "refresh", "extensions"]);
   for (const key of Object.keys(spec)) {
-    if (!knownTopLevel.has(key)) warnings.push(`unknown field "${key}" is preserved but not part of publisher-spec@1.`);
+    if (!knownTopLevel.has(key)) {
+      warnings.push(`unknown field "${key}" is preserved but not part of ${isVenue ? "venue" : "publisher"}-spec@1.`);
+    }
   }
   return { errors, warnings };
+}
+
+export function validatePublisherSpec(spec, options = {}) {
+  return validateSpec(spec, { ...options, kind: "publisher" });
+}
+
+export function validateVenueSpec(spec, options = {}) {
+  return validateSpec(spec, { ...options, kind: "venue" });
 }
 
 // ---------------------------------------------------------------------------
 // Loading
 // ---------------------------------------------------------------------------
 
-export function loadPublisherSpecs(slug) {
-  if (!isNonEmptyString(slug)) throw new Error("publisher must be a non-empty string.");
+function loadSpecs(kind, slug) {
+  const isVenue = kind === "venue";
+  const known = isVenue ? KNOWN_VENUES : KNOWN_PUBLISHERS;
+  const directoryRoot = isVenue ? VENUES_DIRECTORY : PUBLISHERS_DIRECTORY;
+  const validate = isVenue ? validateVenueSpec : validatePublisherSpec;
+  const label = isVenue ? "venue" : "publisher";
+  if (!isNonEmptyString(slug)) throw new Error(`${label} must be a non-empty string.`);
   const normalized = slug.trim();
-  if (!KNOWN_PUBLISHERS.includes(normalized)) {
-    throw new Error(`publisher "${normalized}" is not one of the known publishers (${KNOWN_PUBLISHERS.join(", ")}).`);
+  if (!known.includes(normalized)) {
+    throw new Error(`${label} "${normalized}" is not one of the known ${label}s (${known.join(", ")}).`);
   }
-  const directory = new URL(`${normalized}/`, PUBLISHERS_DIRECTORY);
+  const directory = new URL(`${normalized}/`, directoryRoot);
   let entries;
   try {
     entries = fs.readdirSync(directory);
   } catch {
-    throw new Error(`publisher spec directory for "${normalized}" is missing.`);
+    throw new Error(`${label} spec directory for "${normalized}" is missing.`);
   }
   const jsonFiles = entries
     .filter((file) => file.endsWith(".json"))
     .sort((left, right) => (left === "baseline.json" ? -1 : right === "baseline.json" ? 1 : left.localeCompare(right)));
   if (!jsonFiles.includes("baseline.json")) {
-    throw new Error(`publisher "${normalized}" has no baseline.json.`);
+    throw new Error(`${label} "${normalized}" has no baseline.json.`);
   }
   const specs = [];
   const seenIds = new Set();
@@ -205,14 +233,14 @@ export function loadPublisherSpecs(slug) {
     try {
       spec = JSON.parse(fs.readFileSync(new URL(file, directory), "utf8"));
     } catch (error) {
-      throw new Error(`publisher spec ${normalized}/${file} is not valid JSON: ${error.message}`);
+      throw new Error(`${label} spec ${normalized}/${file} is not valid JSON: ${error.message}`);
     }
-    const { errors } = validatePublisherSpec(spec, { slug: normalized, file });
+    const { errors } = validate(spec, { slug: normalized, file });
     if (errors.length > 0) {
-      throw new Error(`publisher spec ${normalized}/${file} is invalid: ${errors.join(" ")}`);
+      throw new Error(`${label} spec ${normalized}/${file} is invalid: ${errors.join(" ")}`);
     }
     if (seenIds.has(spec.id)) {
-      throw new Error(`publisher "${normalized}" declares duplicate spec id "${spec.id}".`);
+      throw new Error(`${label} "${normalized}" declares duplicate spec id "${spec.id}".`);
     }
     seenIds.add(spec.id);
     specs.push({ file, spec });
@@ -223,7 +251,15 @@ export function loadPublisherSpecs(slug) {
   } catch {
     readme = null;
   }
-  return { publisher: normalized, directory: fileURLToPath(directory), specs, readme };
+  return { [label]: normalized, directory: fileURLToPath(directory), specs, readme };
+}
+
+export function loadPublisherSpecs(slug) {
+  return loadSpecs("publisher", slug);
+}
+
+export function loadVenueSpecs(slug) {
+  return loadSpecs("venue", slug);
 }
 
 // ---------------------------------------------------------------------------
@@ -360,7 +396,7 @@ export function resolvePublisherSpecs({ publisher, profile = null } = {}) {
   };
 }
 
-function composeRuntimeStatement({ publisher, appliedSpecs, venue, staleMessages }) {
+function composeRuntimeStatement({ publisher, appliedSpecs, venue, appliedVenueSpecs = [], venueAdapterInstalled = false, staleMessages }) {
   const parts = [];
   if (publisher && appliedSpecs.length > 0) {
     const baseline = appliedSpecs[0].spec;
@@ -374,7 +410,16 @@ function composeRuntimeStatement({ publisher, appliedSpecs, venue, staleMessages
     parts.push("No publisher baseline applied; generic profile defaults only.");
   }
   if (venue) {
-    parts.push(`No venue-specific override is installed for "${venue}"; the publisher baseline applies.`);
+    if (appliedVenueSpecs.length > 0) {
+      const adapter = appliedVenueSpecs[0].spec;
+      parts.push(`Applied ${adapter.venue} venue adapter (checked ${adapter.source.checked_at}).`);
+      const extras = appliedVenueSpecs.slice(1).map(({ spec }) => spec.id);
+      if (extras.length > 0) parts.push(`Additional venue specs applied: ${extras.join(", ")}.`);
+    } else if (venueAdapterInstalled) {
+      parts.push(`A ${venue} venue adapter is installed, but it has no spec for this profile; the publisher baseline applies.`);
+    } else {
+      parts.push(`No venue-specific override is installed for "${venue}"; the publisher baseline applies.`);
+    }
   } else {
     parts.push("No venue-specific override is installed.");
   }
@@ -448,9 +493,27 @@ export function resolveFigureRules({
   }
 
   const unknowns = [];
+  let appliedVenueSpecs = [];
   if (normalizedVenue) {
-    unknowns.push({ token: "venue", note: `no installed venue adapter for "${normalizedVenue}"; the publisher baseline applies instead` });
-    warnings.push(`venue "${normalizedVenue}" has no installed adapter; publisher baseline applied.`);
+    if (KNOWN_VENUES.includes(normalizedVenue)) {
+      const loadedVenue = loadVenueSpecs(normalizedVenue);
+      appliedVenueSpecs = selectedSpecsForProfile(loadedVenue, normalizedProfile);
+      if (appliedVenueSpecs.length === 0) {
+        warnings.push(`venue "${normalizedVenue}" has no installed spec for profile "${normalizedProfile}".`);
+      }
+      for (const { spec } of appliedVenueSpecs) {
+        layers.push({ kind: "venue-spec", id: spec.id, source_version: spec.source.checked_at });
+        applyTokenLayer(resolved, overrideLog, `venue:${spec.id}`, spec.source.checked_at, flattenRules(spec.rules, "", {}));
+        const freshnessEntry = evaluateFreshness(spec, now);
+        if (freshnessEntry) {
+          freshness.push(freshnessEntry);
+          if (freshnessEntry.stale) warnings.push(freshnessEntry.message);
+        }
+      }
+    } else {
+      unknowns.push({ token: "venue", note: `no installed venue adapter for "${normalizedVenue}"; the publisher baseline applies instead` });
+      warnings.push(`venue "${normalizedVenue}" has no installed adapter; publisher baseline applied.`);
+    }
   }
 
   if (overrides) {
@@ -478,6 +541,8 @@ export function resolveFigureRules({
       publisher: normalizedPublisher,
       appliedSpecs,
       venue: normalizedVenue,
+      appliedVenueSpecs,
+      venueAdapterInstalled: normalizedVenue ? KNOWN_VENUES.includes(normalizedVenue) : false,
       staleMessages: freshness.filter((entry) => entry.stale).map((entry) => entry.message),
     }),
   };
@@ -498,6 +563,27 @@ export function getPublisherSpecDocument({ publisher, specId = null } = {}) {
   }
   return {
     publisher: loaded.publisher,
+    directory: loaded.directory,
+    readme: loaded.readme,
+    specs: selected.map(({ file, spec }) => ({ file, schema: spec.schema, id: spec.id, spec })),
+  };
+}
+
+export function getVenueSpecDocument({ venue, specId = null } = {}) {
+  if (specId !== null && specId !== undefined && !isNonEmptyString(specId)) {
+    throw new Error("spec_id must be a non-empty string when provided.");
+  }
+  const loaded = loadVenueSpecs(venue);
+  let selected = loaded.specs;
+  if (isNonEmptyString(specId)) {
+    const normalized = specId.trim();
+    selected = loaded.specs.filter(({ spec }) => spec.id === normalized);
+    if (selected.length === 0) {
+      throw new Error(`venue "${loaded.venue}" has no spec with id "${normalized}" (available: ${loaded.specs.map(({ spec }) => spec.id).join(", ")}).`);
+    }
+  }
+  return {
+    venue: loaded.venue,
     directory: loaded.directory,
     readme: loaded.readme,
     specs: selected.map(({ file, spec }) => ({ file, schema: spec.schema, id: spec.id, spec })),

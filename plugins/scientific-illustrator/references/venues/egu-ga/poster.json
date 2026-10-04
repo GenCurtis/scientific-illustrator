@@ -1,0 +1,27 @@
+{
+  "schema": "scientific-illustrator/venue-spec@1",
+  "id": "egu-ga-poster",
+  "venue": "egu-ga",
+  "source": {
+    "authority": "EGU26 General Assembly poster presenter guidelines (poster boards and upload rules)",
+    "checked_at": "2026-10-04",
+    "retrieved_by": "agent web verification",
+    "source_urls": [
+      "https://www.egu26.eu/authors/presenters/poster_presenter_guidelines.html"
+    ]
+  },
+  "scope": {
+    "profile": ["poster"]
+  },
+  "rules": {
+    "orientation": "landscape",
+    "canvas_mm": [1978, 1183],
+    "delivery": {
+      "format": "pdf",
+      "page_count": 1,
+      "max_file_size_mb": 50
+    }
+  },
+  "confidence": { "level": "official-guidelines" },
+  "refresh": { "strategy": "manual-annual", "stale_after_days": 365 }
+}

@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { validatePublisherSpec } from "../plugins/scientific-illustrator/scripts/publication-compliance.mjs";
+import { validatePublisherSpec, validateVenueSpec, KNOWN_VENUES } from "../plugins/scientific-illustrator/scripts/publication-compliance.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const packagePath = path.join(root, "package.json");
@@ -177,6 +177,36 @@ for (const publisher of curatedPublishers) {
     }
     if (!Array.isArray(spec.source?.source_urls) || spec.source.source_urls.length === 0) {
       throw new Error(`references/publishers/${publisher}/${file} must list at least one source URL.`);
+    }
+  }
+}
+const venuesRoot = path.join(pluginRoot, "references", "venues");
+const curatedVenues = [...KNOWN_VENUES].sort();
+const venueDirectories = (await fs.readdir(venuesRoot, { withFileTypes: true }))
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name)
+  .sort();
+if (JSON.stringify(venueDirectories) !== JSON.stringify([...curatedVenues].sort())) {
+  throw new Error("references/venues must match the curated venue list exactly.");
+}
+for (const venue of curatedVenues) {
+  const venueRoot = path.join(venuesRoot, venue);
+  await fs.access(path.join(venueRoot, "README.md"));
+  const specFiles = (await fs.readdir(venueRoot)).filter((name) => name.endsWith(".json")).sort();
+  if (!specFiles.includes("baseline.json")) {
+    throw new Error(`references/venues/${venue} must contain baseline.json.`);
+  }
+  for (const file of specFiles) {
+    const spec = JSON.parse(await fs.readFile(path.join(venueRoot, file), "utf8"));
+    const { errors } = validateVenueSpec(spec, { slug: venue, file });
+    if (errors.length > 0) {
+      throw new Error(`references/venues/${venue}/${file} is invalid: ${errors.join(" ")}`);
+    }
+    if (typeof spec.id !== "string" || !spec.id.startsWith(`${venue}-`)) {
+      throw new Error(`references/venues/${venue}/${file} id must start with "${venue}-".`);
+    }
+    if (!Array.isArray(spec.source?.source_urls) || spec.source.source_urls.length === 0) {
+      throw new Error(`references/venues/${venue}/${file} must list at least one source URL.`);
     }
   }
 }
