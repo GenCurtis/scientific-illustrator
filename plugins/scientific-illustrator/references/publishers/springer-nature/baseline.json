@@ -1,0 +1,24 @@
+{
+  "schema": "scientific-illustrator/publisher-spec@1",
+  "id": "springer-nature-baseline",
+  "publisher": "Springer Nature",
+  "source": {
+    "authority": "official",
+    "checked_at": "2026-10-04",
+    "retrieved_by": "manual-audit",
+    "source_urls": [
+      "https://support.springernature.com/en/support/solutions/articles/6000083109-artwork-submission-instructions",
+      "https://www.springernature.com/gp/authors/campaigns/writing-a-manuscript/formatting"
+    ]
+  },
+  "scope": {
+    "profile": ["paper-figure"]
+  },
+  "rules": {
+    "digital_artwork": { "required": true },
+    "editable_source": { "preferred": true },
+    "journal_specific": { "check_required": true }
+  },
+  "confidence": { "level": "publisher-baseline" },
+  "refresh": { "strategy": "manual-review", "stale_after_days": 365 }
+}

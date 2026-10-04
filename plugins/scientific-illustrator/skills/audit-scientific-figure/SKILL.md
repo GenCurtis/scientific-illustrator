@@ -24,7 +24,7 @@ Load the brief with `figure_brief_read` and the design plan with `figure_plan_re
 
 1. truth correctness: does the figure match the brief's claims, exact text, quantities, and topology?
 2. design quality: does the execution match the plan and the figure kind's grammar? Load `figure_kind_get` for the kind's heuristics and review hierarchy, composition, information density, readability, and semantic consistency using the benchmark rubric vocabulary.
-3. publication compliance: defer official numbers to the publication-compliance layer; never invent them.
+3. publication compliance: resolve official numbers with `figure_rules_resolve` (publisher and venue constraints with per-token provenance and freshness) and cite the applied baseline in the verdict; never invent numbers.
 
 Design-quality defects are advisory by default and become hard only when they conflict with publisher or venue constraints. Under `faithful` recreation, style and profile deviations from the reference stay advisory and are reported as reference-faithful.
 

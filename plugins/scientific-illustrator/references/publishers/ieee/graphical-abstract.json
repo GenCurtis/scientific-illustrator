@@ -1,0 +1,27 @@
+{
+  "schema": "scientific-illustrator/publisher-spec@1",
+  "id": "ieee-graphical-abstract",
+  "publisher": "IEEE",
+  "source": {
+    "authority": "official",
+    "checked_at": "2026-10-04",
+    "retrieved_by": "manual-audit",
+    "source_urls": [
+      "https://journals.ieeeauthorcenter.ieee.org/create-your-ieee-journal-article/prepare-supplementary-materials/",
+      "https://journals.ieeeauthorcenter.ieee.org/create-your-ieee-journal-article/create-graphics-for-your-article/"
+    ]
+  },
+  "scope": {
+    "profile": ["graphical-abstract"]
+  },
+  "rules": {
+    "canvas_px": [660, 295],
+    "raster": { "minimum_dpi": 300, "comparison": "greater-than-or-equal" },
+    "fonts": {
+      "minimum_text_px": 16,
+      "minimum_text_pt_approx": 12
+    }
+  },
+  "confidence": { "level": "publisher-baseline" },
+  "refresh": { "strategy": "manual-review", "stale_after_days": 365 }
+}

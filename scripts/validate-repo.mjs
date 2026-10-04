@@ -2,6 +2,8 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { validatePublisherSpec } from "../plugins/scientific-illustrator/scripts/publication-compliance.mjs";
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const packagePath = path.join(root, "package.json");
 const rootPackage = JSON.parse(await fs.readFile(packagePath, "utf8"));
@@ -148,6 +150,36 @@ for (const fixture of curatedBenchmarkFixtures) {
   }
 }
 await fs.access(path.join(benchmarkRoot, "README.md"));
+const publishersRoot = path.join(pluginRoot, "references", "publishers");
+const curatedPublishers = ["acm", "elsevier", "ieee", "springer-nature"];
+const publisherDirectories = (await fs.readdir(publishersRoot, { withFileTypes: true }))
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name)
+  .sort();
+if (JSON.stringify(publisherDirectories) !== JSON.stringify([...curatedPublishers].sort())) {
+  throw new Error("references/publishers must match the curated publisher list exactly.");
+}
+for (const publisher of curatedPublishers) {
+  const publisherRoot = path.join(publishersRoot, publisher);
+  await fs.access(path.join(publisherRoot, "README.md"));
+  const specFiles = (await fs.readdir(publisherRoot)).filter((name) => name.endsWith(".json")).sort();
+  if (!specFiles.includes("baseline.json")) {
+    throw new Error(`references/publishers/${publisher} must contain baseline.json.`);
+  }
+  for (const file of specFiles) {
+    const spec = JSON.parse(await fs.readFile(path.join(publisherRoot, file), "utf8"));
+    const { errors } = validatePublisherSpec(spec, { slug: publisher, file });
+    if (errors.length > 0) {
+      throw new Error(`references/publishers/${publisher}/${file} is invalid: ${errors.join(" ")}`);
+    }
+    if (typeof spec.id !== "string" || !spec.id.startsWith(`${publisher}-`)) {
+      throw new Error(`references/publishers/${publisher}/${file} id must start with "${publisher}-".`);
+    }
+    if (!Array.isArray(spec.source?.source_urls) || spec.source.source_urls.length === 0) {
+      throw new Error(`references/publishers/${publisher}/${file} must list at least one source URL.`);
+    }
+  }
+}
 const ooxmlBridgePath = path.join(pluginRoot, "scripts", "powerpoint-mac-bridge.py");
 await fs.access(ooxmlBridgePath);
 await fs.access(path.join(pluginRoot, "scripts", "officejs-bridge.mjs"));

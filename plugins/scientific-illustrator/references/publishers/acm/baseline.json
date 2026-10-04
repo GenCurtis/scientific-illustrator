@@ -1,0 +1,40 @@
+{
+  "schema": "scientific-illustrator/publisher-spec@1",
+  "id": "acm-baseline",
+  "publisher": "ACM",
+  "source": {
+    "authority": "official",
+    "checked_at": "2026-10-04",
+    "retrieved_by": "manual-audit",
+    "source_urls": [
+      "https://www.acm.org/binaries/content/assets/publications/taps/acm_layout_submission_template.pdf",
+      "https://www.acm.org/publications/taps/describing-figures/",
+      "https://www.acm.org/publications/taps/latex-best-practices"
+    ]
+  },
+  "scope": {
+    "profile": ["paper-figure"]
+  },
+  "rules": {
+    "accepted_formats": ["TIFF", "JPEG"],
+    "vector": {
+      "preferred": true,
+      "preferred_formats": ["SVG", "EPS", "PS"]
+    },
+    "native_graphics": { "recommended": false },
+    "fonts": { "embed_required": true },
+    "raster": {
+      "dpi": {
+        "unknown": true,
+        "note": "ACM publishes no universal raster DPI; requirements are venue-specific."
+      }
+    },
+    "accessibility": {
+      "figure_description_required": true,
+      "description_must_not_repeat_caption": true,
+      "latex_target": "\\Description{...}"
+    }
+  },
+  "confidence": { "level": "publisher-baseline" },
+  "refresh": { "strategy": "manual-review", "stale_after_days": 365 }
+}

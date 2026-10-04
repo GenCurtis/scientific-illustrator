@@ -16,7 +16,8 @@ Before designing, load the reusable design knowledge:
 
 - `figure_profile_get` for the target profile's quality rules and default parameters;
 - `figure_kind_get` for the figure kind's semantic primitives, layout archetypes, encoding conventions, and failure modes;
-- `figure_style_read` for the manuscript visual system; when no style exists, propose one with `figure_style_write` only after user confirmation.
+- `figure_style_read` for the manuscript visual system; when no style exists, propose one with `figure_style_write` only after user confirmation;
+- `figure_rules_resolve` when a publisher or venue is known: apply the resolved publication-compliance chain with per-token provenance instead of hard-coding official numbers.
 
 Read or create the figure truth with `figure_brief_read` / `figure_brief_write`: the message, audience, inventory, exact text, figure kind, profile, and style id belong there. Infer `figure_kind` from the user's intent, state the inference explicitly, and record it in the brief; use `mixed-composite` only when the structure is genuinely composite.
 

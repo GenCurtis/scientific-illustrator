@@ -1,0 +1,44 @@
+{
+  "schema": "scientific-illustrator/publisher-spec@1",
+  "id": "elsevier-baseline",
+  "publisher": "Elsevier",
+  "source": {
+    "authority": "official",
+    "checked_at": "2026-10-04",
+    "retrieved_by": "manual-audit",
+    "source_urls": [
+      "https://www.elsevier.com/about/policies-and-standards/author/artwork-and-media-instructions/artwork-types",
+      "https://www.elsevier.com/about/policies-and-standards/author/artwork-and-media-instructions/artwork-sizing",
+      "https://www.elsevier.com/about/policies-and-standards/author/artwork-and-media-instructions/artwork-overview",
+      "https://www.elsevier.com/about/policies-and-standards/author/artwork-and-media-instructions/artwork-faq"
+    ]
+  },
+  "scope": {
+    "profile": ["paper-figure"]
+  },
+  "rules": {
+    "raster": {
+      "halftone": { "minimum_dpi": 300, "comparison": "greater-than-or-equal" },
+      "combination": { "minimum_dpi": 500, "comparison": "greater-than-or-equal" },
+      "line_art": { "minimum_dpi": 1000, "comparison": "greater-than-or-equal" }
+    },
+    "target_width_mm": {
+      "minimum": 30,
+      "single_column": 90,
+      "one_half_column": 140,
+      "double_column": 190
+    },
+    "fonts": {
+      "recommended": ["Arial", "Helvetica", "Courier", "Symbol", "Times", "Times New Roman"]
+    },
+    "vector": { "preferred": true },
+    "hybrid_artwork": {
+      "color_tonal_areas": "RGB",
+      "bitmap_effective_resolution_required": true,
+      "embed_fonts": true
+    },
+    "line_weight_pt": { "minimum": 0.1, "recommended": 0.25, "maximum": 1.5 }
+  },
+  "confidence": { "level": "publisher-baseline" },
+  "refresh": { "strategy": "manual-review", "stale_after_days": 365 }
+}

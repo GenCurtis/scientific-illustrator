@@ -12,6 +12,7 @@ import { readFigureBrief, writeFigureBrief } from "./figure-truth.mjs";
 import { readFigureStyle, writeFigureStyle } from "./figure-style.mjs";
 import { readFigureKind, readProfileKnowledge } from "./figure-knowledge.mjs";
 import { readFigurePlan, writeFigurePlan } from "./figure-plan.mjs";
+import { getPublisherSpecDocument, resolveFigureRules, resolvePublisherSpecs } from "./publication-compliance.mjs";
 
 const execFileAsync = promisify(execFile);
 const SERVER_NAME = "scientific-illustrator-file-utils";
@@ -448,6 +449,83 @@ const tools = [
           type: "integer",
           minimum: 0,
           description: "Current revision when updating; omit only when creating.",
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "figure_rules_resolve",
+    description:
+      "Resolve the layered publication-compliance rule chain for a figure: explicit user overrides > venue spec > publisher spec > generic profile defaults. Every resolved token carries provenance (source, source_version, overridden flags); the result also includes the override log, unknowns (venue adapters not installed, fields publishers leave unspecified), freshness warnings for stale specs, and a runtime statement naming the applied baseline. Comparison semantics (greater-than vs greater-than-or-equal) are preserved. Offline-first: bundled publisher specs checked on their source.checked_at date.",
+    inputSchema: {
+      type: "object",
+      required: ["profile"],
+      properties: {
+        profile: {
+          type: "string",
+          description: "Design profile id: paper-figure, graphical-abstract, poster, slides, or diagram.",
+        },
+        figure_kind: {
+          type: "string",
+          description: "Optional figure kind id, echoed for traceability.",
+        },
+        publisher: {
+          type: "string",
+          description: "Publisher slug: acm, elsevier, ieee, or springer-nature. Omit when no publisher baseline applies.",
+        },
+        venue: {
+          type: "string",
+          description: "Optional journal/venue name; v1 ships no venue adapters, so a venue is reported as unknown instead of silently ignored.",
+        },
+        style_id: {
+          type: "string",
+          description: "Optional manuscript style id, echoed for traceability.",
+        },
+        overrides: {
+          type: "object",
+          description: "Explicit user overrides as dotted token -> value (highest precedence).",
+          additionalProperties: true,
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "publisher_spec_get",
+    description:
+      "Read raw bundled publisher specification documents (machine-readable JSON plus the adapter README) for human review and audit. Kept separate from figure_rules_resolve so raw requirements and the resolved/overridden result are never confused. Publishers: acm, elsevier, ieee, springer-nature; optional spec_id selects one file (e.g. ieee-graphical-abstract).",
+    inputSchema: {
+      type: "object",
+      required: ["publisher"],
+      properties: {
+        publisher: {
+          type: "string",
+          description: "Publisher slug: acm, elsevier, ieee, or springer-nature.",
+        },
+        spec_id: {
+          type: "string",
+          description: "Optional exact spec id, e.g. ieee-baseline or ieee-graphical-abstract.",
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "publisher_spec_resolve",
+    description:
+      "Resolve only the publisher layer (baseline plus any profile-specific spec such as ieee-graphical-abstract) with per-token provenance, override log, unknowns, and freshness warnings. Use figure_rules_resolve for the full chain including profile defaults and user overrides.",
+    inputSchema: {
+      type: "object",
+      required: ["publisher"],
+      properties: {
+        publisher: {
+          type: "string",
+          description: "Publisher slug: acm, elsevier, ieee, or springer-nature.",
+        },
+        profile: {
+          type: "string",
+          description: "Optional design profile filter; without it all installed specs for the publisher are merged.",
         },
       },
       additionalProperties: false,
@@ -1185,6 +1263,19 @@ async function handleTool(name, args = {}) {
         document: args.document,
         expectedRevision: args.expected_revision,
       });
+    case "figure_rules_resolve":
+      return resolveFigureRules({
+        profile: args.profile,
+        figureKind: args.figure_kind,
+        publisher: args.publisher,
+        venue: args.venue,
+        styleId: args.style_id,
+        overrides: args.overrides,
+      });
+    case "publisher_spec_get":
+      return getPublisherSpecDocument({ publisher: args.publisher, specId: args.spec_id });
+    case "publisher_spec_resolve":
+      return resolvePublisherSpecs({ publisher: args.publisher, profile: args.profile });
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
@@ -1199,7 +1290,7 @@ async function handleMessage(message) {
       protocolVersion,
       capabilities: { tools: { listChanged: false } },
       serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
-      instructions: "This is the post-live draw.io file-utilities server, not the live drawing backend. For Scientific Illustrator work, first use drawio_live_get_capabilities and construct every region visibly with drawio_live_* tools, including local screenshot/correction gates. Use these file utilities only after live cells exist to validate, inspect, export, or repair a saved snapshot, unless the user explicitly requested a non-live file-only workflow. drawio_create_diagram and drawio_write_xml require a declared workflow_context. Never rasterize reconstructable text, shapes, arrows, tables, charts, axes, or legends; every deliverable image cell must be one atomic irreducible raster unit with a specific reason, tight-source/crop audit, contains_reconstructable_content=false, and a decomposition note. Inline HTML/SVG images are rejected because their source and crop cannot be audited. A trace reference overlay is analysis-only and must not remain in the final deliverable. figure_brief_read/figure_brief_write persist the scientific-truth brief with three-level resolution (explicit path, project .scientific-illustrator/, or sibling); a missing brief is reported as exists=false, never invented, and brief reads/writes return recreation_gate (unresolved ambiguity under the declared recreation policy). figure_style_read/figure_style_write persist the shared manuscript style contract (including semantic_styles) with the same resolution and optimistic locking. figure_profile_get returns a design profile's quality rules plus its machine-readable default parameters; figure_kind_get returns the grammar page for a figure kind (primitives, archetypes, encoding, failure modes, boundaries). figure_plan_read/figure_plan_write persist the design plan (kind, archetype, reading order, encoding, hierarchy, layout constraints, render contexts); plans are regenerable, never carry truth, and resolve next to an explicit brief_path or through the same three-level artifact discovery.",
+      instructions: "This is the post-live draw.io file-utilities server, not the live drawing backend. For Scientific Illustrator work, first use drawio_live_get_capabilities and construct every region visibly with drawio_live_* tools, including local screenshot/correction gates. Use these file utilities only after live cells exist to validate, inspect, export, or repair a saved snapshot, unless the user explicitly requested a non-live file-only workflow. drawio_create_diagram and drawio_write_xml require a declared workflow_context. Never rasterize reconstructable text, shapes, arrows, tables, charts, axes, or legends; every deliverable image cell must be one atomic irreducible raster unit with a specific reason, tight-source/crop audit, contains_reconstructable_content=false, and a decomposition note. Inline HTML/SVG images are rejected because their source and crop cannot be audited. A trace reference overlay is analysis-only and must not remain in the final deliverable. figure_brief_read/figure_brief_write persist the scientific-truth brief with three-level resolution (explicit path, project .scientific-illustrator/, or sibling); a missing brief is reported as exists=false, never invented, and brief reads/writes return recreation_gate (unresolved ambiguity under the declared recreation policy). figure_style_read/figure_style_write persist the shared manuscript style contract (including semantic_styles) with the same resolution and optimistic locking. figure_profile_get returns a design profile's quality rules plus its machine-readable default parameters; figure_kind_get returns the grammar page for a figure kind (primitives, archetypes, encoding, failure modes, boundaries). figure_plan_read/figure_plan_write persist the design plan (kind, archetype, reading order, encoding, hierarchy, layout constraints, render contexts); plans are regenerable, never carry truth, and resolve next to an explicit brief_path or through the same three-level artifact discovery. figure_rules_resolve resolves the publication-compliance chain (user overrides > venue > publisher spec > profile defaults) with per-token provenance and freshness warnings; publisher_spec_get returns raw bundled publisher specs (acm, elsevier, ieee, springer-nature) for human review; publisher_spec_resolve resolves the publisher layer alone.",
     });
   }
   if (method === "ping") return rpcResult(id, {});

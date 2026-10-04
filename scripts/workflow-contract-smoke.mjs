@@ -8,8 +8,9 @@
 //   3. planner routing must map onto real sequence operations, refuse silent
 //      crops, and keep zero-delay bounded execution limits;
 //   4. the design skills must carry the P1 design-intelligence contract
-//      (profile/kind/brief/plan loading, the recreation policy, and the
-//      truth/design/compliance review split).
+//      (profile/kind/brief/plan loading, the recreation policy, the
+//      truth/design/compliance review split, and the P2 publication-compliance
+//      resolver references).
 // The draw.io skill is intentionally out of scope: its backend still paces
 // per-object playback.
 import assert from "node:assert/strict";
@@ -33,9 +34,9 @@ const skills = {
   "recreate-scientific-figure": await read("plugins/scientific-illustrator/skills/recreate-scientific-figure/SKILL.md"),
 };
 const requiredBySkill = {
-  "audit-scientific-figure": ["figure_brief_read", "figure_plan_read", "figure_kind_get", "truth correctness", "design quality", "publication compliance"],
+  "audit-scientific-figure": ["figure_brief_read", "figure_plan_read", "figure_kind_get", "truth correctness", "design quality", "publication compliance", "figure_rules_resolve", "applied baseline"],
   "correct-scientific-figure": ["figure_brief_read", "figure_plan_read", "regenerated", "brief's truth"],
-  "design-scientific-figure": ["figure_profile_get", "figure_kind_get", "figure_style_read", "figure_brief_write", "figure_plan_write"],
+  "design-scientific-figure": ["figure_profile_get", "figure_kind_get", "figure_style_read", "figure_brief_write", "figure_plan_write", "figure_rules_resolve"],
   "edit-powerpoint-live": [
     "powerpoint_draw_sequence",
     "step_delay_ms=0",
@@ -55,6 +56,7 @@ const requiredBySkill = {
     "publication-ready",
     "precedence chain",
     "figure_kind_get",
+    "figure_rules_resolve",
   ],
 };
 for (const [skill, tokens] of Object.entries(requiredBySkill)) {
@@ -75,7 +77,7 @@ for (const [skill, text] of Object.entries(skills)) {
   }
 }
 console.log("workflow contract: PPT skill text keeps batching/checkpoint/planner rules and drops the paced per-region loop.");
-console.log("workflow contract: design skills carry profile/kind/brief/plan loading, the recreation policy, and the review split.");
+console.log("workflow contract: design skills carry profile/kind/brief/plan loading, the recreation policy, the review split, and the publication-compliance resolver.");
 
 // ------------------------------------------------------------- 2. MCP contract
 const child = spawn(process.execPath, [path.join(root, "plugins/scientific-illustrator/scripts/powerpoint-server.mjs")], {

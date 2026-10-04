@@ -1,0 +1,42 @@
+{
+  "schema": "scientific-illustrator/publisher-spec@1",
+  "id": "ieee-baseline",
+  "publisher": "IEEE",
+  "source": {
+    "authority": "official",
+    "checked_at": "2026-10-04",
+    "retrieved_by": "manual-audit",
+    "source_urls": [
+      "https://journals.ieeeauthorcenter.ieee.org/create-your-ieee-journal-article/create-graphics-for-your-article/resolution-and-size/",
+      "https://journals.ieeeauthorcenter.ieee.org/create-your-ieee-journal-article/create-graphics-for-your-article/file-formatting/",
+      "https://journals.ieeeauthorcenter.ieee.org/create-your-ieee-journal-article/create-graphics-for-your-article/"
+    ]
+  },
+  "scope": {
+    "profile": ["paper-figure", "graphical-abstract"]
+  },
+  "rules": {
+    "raster": {
+      "color_grayscale": { "minimum_dpi": 300, "comparison": "greater-than" },
+      "bw_line_art": { "minimum_dpi": 600, "comparison": "greater-than" }
+    },
+    "target_width_mm": {
+      "single_column": 88.9,
+      "double_column": 182
+    },
+    "accepted_formats": ["PS", "EPS", "PDF", "PNG", "TIFF"],
+    "office_files": { "accepted_only_if_native": true },
+    "fonts": {
+      "recommended": ["Helvetica", "Times New Roman", "Arial", "Cambria", "Symbol"],
+      "embed_or_outline": true,
+      "full_size_text_min_pt": 9,
+      "full_size_text_max_pt": 10
+    },
+    "accessibility": {
+      "non_color_encoding": true,
+      "grayscale_distinguishable": true
+    }
+  },
+  "confidence": { "level": "publisher-baseline" },
+  "refresh": { "strategy": "manual-review", "stale_after_days": 365 }
+}
