@@ -380,9 +380,9 @@ try {
   const list = await request("tools/list", {});
   const names = list.tools.map((tool) => tool.name);
 
-  await check("MCP tools/list exposes exactly 22 tools including the compliance, venue, and alt-text tools", () => {
-    assert.equal(list.tools.length, 22);
-    for (const name of ["figure_rules_resolve", "publisher_spec_get", "publisher_spec_resolve", "venue_spec_get", "figure_alt_text_generate"]) {
+  await check("MCP tools/list exposes exactly 24 tools including the compliance, venue, alt-text, and deck tools", () => {
+    assert.equal(list.tools.length, 24);
+    for (const name of ["figure_rules_resolve", "publisher_spec_get", "publisher_spec_resolve", "venue_spec_get", "figure_alt_text_generate", "deck_read", "deck_write"]) {
       assert.ok(names.includes(name), `${name} must be listed`);
     }
   });

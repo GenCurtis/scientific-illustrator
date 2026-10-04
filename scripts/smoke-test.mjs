@@ -11,7 +11,7 @@ const servers = [
   },
   {
     file: "plugins/scientific-illustrator/scripts/server.mjs",
-    tools: ["drawio_validate", "drawio_inspect", "drawio_export", "figure_brief_read", "figure_brief_write", "figure_style_read", "figure_style_write", "figure_profile_get", "figure_kind_get", "figure_plan_read", "figure_plan_write", "figure_rules_resolve", "publisher_spec_get", "publisher_spec_resolve", "venue_spec_get", "figure_alt_text_generate"],
+    tools: ["drawio_validate", "drawio_inspect", "drawio_export", "figure_brief_read", "figure_brief_write", "figure_style_read", "figure_style_write", "figure_profile_get", "figure_kind_get", "figure_plan_read", "figure_plan_write", "figure_rules_resolve", "publisher_spec_get", "publisher_spec_resolve", "venue_spec_get", "figure_alt_text_generate", "deck_read", "deck_write"],
   },
   {
     file: "plugins/scientific-illustrator/scripts/powerpoint-server.mjs",

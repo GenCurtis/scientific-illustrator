@@ -13,6 +13,7 @@ import { readFigureStyle, writeFigureStyle } from "./figure-style.mjs";
 import { readFigureKind, readProfileKnowledge } from "./figure-knowledge.mjs";
 import { readFigurePlan, writeFigurePlan } from "./figure-plan.mjs";
 import { generateAltText } from "./figure-alt-text.mjs";
+import { readDeck, writeDeck } from "./figure-deck.mjs";
 import { getPublisherSpecDocument, getVenueSpecDocument, resolveFigureRules, resolvePublisherSpecs } from "./publication-compliance.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -566,6 +567,54 @@ const tools = [
         brief_path: {
           type: "string",
           description: "Explicit brief JSON path; the plan is resolved next to it.",
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "deck_read",
+    description:
+      "Read the deck truth document (deck.json) for a slide deck: narrative arc, ordered slide list with roles and messages, shared style/profile reference, and profile settings. Resolution: explicit deck_path, then .scientific-illustrator/decks/<stem>/deck.json above the artifact, then a sibling <stem>.si-deck.json. A missing deck is reported as exists=false, never invented. Slide briefs are separate brief@1 documents resolved relative to the deck directory (slides/<slide-id>.brief.json by default).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        artifact_path: {
+          type: "string",
+          description: "Absolute path of the deck artifact (.pptx/.drawio) that anchors discovery.",
+        },
+        deck_path: {
+          type: "string",
+          description: "Explicit deck JSON path.",
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "deck_write",
+    description:
+      "Create (revision 0) or update (expected_revision + 1) the deck truth document with optimistic locking. The tool manages revision/created_at/updated_at. Only deck-level truth belongs here (narrative, slide list, roles, messages, style reference); per-slide scientific truth belongs in the slide briefs, and design decisions belong in the plan.",
+    inputSchema: {
+      type: "object",
+      required: ["document"],
+      properties: {
+        artifact_path: {
+          type: "string",
+          description: "Absolute path of the deck artifact (.pptx/.drawio) that anchors discovery.",
+        },
+        deck_path: {
+          type: "string",
+          description: "Explicit deck JSON path.",
+        },
+        document: {
+          type: "object",
+          description: "The deck document to write; see deck_read for the shape.",
+        },
+        expected_revision: {
+          type: "integer",
+          minimum: 0,
+          description: "Current revision for updates; omit (or 0) when creating.",
         },
       },
       additionalProperties: false,
@@ -1328,6 +1377,15 @@ async function handleTool(name, args = {}) {
       const plan = await readFigurePlan({ artifactPath: args.artifact_path, briefPath: args.brief_path });
       return generateAltText({ brief: brief.document, plan: plan.exists ? plan.document : null });
     }
+    case "deck_read":
+      return readDeck({ artifactPath: args.artifact_path, deckPath: args.deck_path });
+    case "deck_write":
+      return writeDeck({
+        artifactPath: args.artifact_path,
+        deckPath: args.deck_path,
+        document: args.document,
+        expectedRevision: args.expected_revision,
+      });
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
@@ -1342,7 +1400,7 @@ async function handleMessage(message) {
       protocolVersion,
       capabilities: { tools: { listChanged: false } },
       serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
-      instructions: "This is the post-live draw.io file-utilities server, not the live drawing backend. For Scientific Illustrator work, first use drawio_live_get_capabilities and construct every region visibly with drawio_live_* tools, including local screenshot/correction gates. Use these file utilities only after live cells exist to validate, inspect, export, or repair a saved snapshot, unless the user explicitly requested a non-live file-only workflow. drawio_create_diagram and drawio_write_xml require a declared workflow_context. Never rasterize reconstructable text, shapes, arrows, tables, charts, axes, or legends; every deliverable image cell must be one atomic irreducible raster unit with a specific reason, tight-source/crop audit, contains_reconstructable_content=false, and a decomposition note. Inline HTML/SVG images are rejected because their source and crop cannot be audited. A trace reference overlay is analysis-only and must not remain in the final deliverable. figure_brief_read/figure_brief_write persist the scientific-truth brief with three-level resolution (explicit path, project .scientific-illustrator/, or sibling); a missing brief is reported as exists=false, never invented, and brief reads/writes return recreation_gate (unresolved ambiguity under the declared recreation policy). figure_style_read/figure_style_write persist the shared manuscript style contract (including semantic_styles) with the same resolution and optimistic locking. figure_profile_get returns a design profile's quality rules plus its machine-readable default parameters; figure_kind_get returns the grammar page for a figure kind (primitives, archetypes, encoding, failure modes, boundaries). figure_plan_read/figure_plan_write persist the design plan (kind, archetype, reading order, encoding, hierarchy, layout constraints, render contexts); plans are regenerable, never carry truth, and resolve next to an explicit brief_path or through the same three-level artifact discovery. figure_rules_resolve resolves the publication-compliance chain (user overrides > venue > publisher spec > profile defaults) with per-token provenance and freshness warnings; publisher_spec_get returns raw bundled publisher specs (acm, elsevier, ieee, springer-nature) for human review; publisher_spec_resolve resolves the publisher layer alone; venue_spec_get returns raw bundled venue adapters (egu-ga) for human review, and installed venue adapters join the resolver chain ahead of the publisher layer. figure_alt_text_generate composes a deterministic first-draft figure description from the brief's claims and inventory plus the plan, reports what it used, never invents content, and does not write to the brief.",
+      instructions: "This is the post-live draw.io file-utilities server, not the live drawing backend. For Scientific Illustrator work, first use drawio_live_get_capabilities and construct every region visibly with drawio_live_* tools, including local screenshot/correction gates. Use these file utilities only after live cells exist to validate, inspect, export, or repair a saved snapshot, unless the user explicitly requested a non-live file-only workflow. drawio_create_diagram and drawio_write_xml require a declared workflow_context. Never rasterize reconstructable text, shapes, arrows, tables, charts, axes, or legends; every deliverable image cell must be one atomic irreducible raster unit with a specific reason, tight-source/crop audit, contains_reconstructable_content=false, and a decomposition note. Inline HTML/SVG images are rejected because their source and crop cannot be audited. A trace reference overlay is analysis-only and must not remain in the final deliverable. figure_brief_read/figure_brief_write persist the scientific-truth brief with three-level resolution (explicit path, project .scientific-illustrator/, or sibling); a missing brief is reported as exists=false, never invented, and brief reads/writes return recreation_gate (unresolved ambiguity under the declared recreation policy). figure_style_read/figure_style_write persist the shared manuscript style contract (including semantic_styles) with the same resolution and optimistic locking. figure_profile_get returns a design profile's quality rules plus its machine-readable default parameters; figure_kind_get returns the grammar page for a figure kind (primitives, archetypes, encoding, failure modes, boundaries). figure_plan_read/figure_plan_write persist the design plan (kind, archetype, reading order, encoding, hierarchy, layout constraints, render contexts); plans are regenerable, never carry truth, and resolve next to an explicit brief_path or through the same three-level artifact discovery. figure_rules_resolve resolves the publication-compliance chain (user overrides > venue > publisher spec > profile defaults) with per-token provenance and freshness warnings; publisher_spec_get returns raw bundled publisher specs (acm, elsevier, ieee, springer-nature) for human review; publisher_spec_resolve resolves the publisher layer alone; venue_spec_get returns raw bundled venue adapters (egu-ga) for human review, and installed venue adapters join the resolver chain ahead of the publisher layer. figure_alt_text_generate composes a deterministic first-draft figure description from the brief's claims and inventory plus the plan, reports what it used, never invents content, and does not write to the brief. deck_read/deck_write persist the deck truth document (narrative arc, ordered slide list with roles, style reference) with the same three-level resolution under decks/<stem>/deck.json; a missing deck is reported as exists=false, per-slide scientific truth stays in the slide briefs, and deck-level design decisions stay in the plan.",
     });
   }
   if (method === "ping") return rpcResult(id, {});
