@@ -75,10 +75,92 @@ try {
     assert.equal(warnings.some((warning) => warning.includes("unknown-profile")), true);
   });
 
-  await check("unknown style fields are preserved and warned", async () => {
-    const { errors, warnings } = validateStyle(makeStyle({ corner_radius: 4 }));
+  await check("full visual-system blocks are structurally accepted", async () => {
+    const full = makeStyle({
+      spacing: { unit: "mm", gutter: 3 },
+      panel_gutter: 3,
+      shape_language: "rounded-rectangles",
+      corner_radius: 4,
+      connector_style: { style: "orthogonal", routing: "avoid-crossings" },
+      arrowheads: "solid-triangle",
+      callout_style: { fill: "#F7F7F7" },
+      annotation_style: "minimal",
+      marker_shapes: { control: "circle", treatment: "square" },
+      image_border: "hairline",
+      scale_bar_style: { color: "#000000", thickness: 1 },
+      legend_style: "top-right",
+      uncertainty_style: { kind: "ci95" },
+      semantic_styles: {
+        control: { color: "#666666", marker: "circle", line_style: "solid" },
+        "treatment-a": { color: "#0072B2", marker: "square" },
+      },
+    });
+    assert.deepEqual(validateStyle(full).errors, []);
+    assert.deepEqual(validateStyle(full).warnings, []);
+  });
+
+  await check("loose visual-system blocks reject garbage types", async () => {
+    for (const [field, value] of [
+      ["spacing", ["mm"]],
+      ["panel_gutter", null],
+      ["shape_language", ""],
+      ["shape_language", "   "],
+      ["corner_radius", Number.NaN],
+      ["arrowheads", true],
+      ["marker_shapes", []],
+    ]) {
+      const { errors } = validateStyle(makeStyle({ [field]: value }));
+      assert.equal(errors.some((error) => error.includes(field)), true, `${field} must reject ${JSON.stringify(value)}`);
+    }
+  });
+
+  await check("semantic_styles entries validate their identity-to-visual contract", async () => {
+    assert.deepEqual(validateStyle(makeStyle({ semantic_styles: {} })).errors, []);
+    assert.deepEqual(
+      validateStyle(makeStyle({ semantic_styles: { control: { color: "#666666", marker: "circle", line_style: "solid" } } })).errors,
+      []
+    );
+    assert.equal(
+      validateStyle(makeStyle({ semantic_styles: ["control"] })).errors.some((error) => error.includes("semantic_styles must be an object")),
+      true
+    );
+    assert.equal(
+      validateStyle(makeStyle({ semantic_styles: { control: "grey" } })).errors.some((error) => error.includes("semantic_styles.control must be an object")),
+      true
+    );
+    assert.equal(
+      validateStyle(makeStyle({ semantic_styles: { control: {} } })).errors.some((error) => error.includes("must declare at least one")),
+      true
+    );
+    assert.equal(
+      validateStyle(makeStyle({ semantic_styles: { control: { color: "" } } })).errors.some((error) => error.includes("control.color")),
+      true
+    );
+    for (const badValue of [5, true, null]) {
+      assert.equal(
+        validateStyle(makeStyle({ semantic_styles: { control: { color: badValue } } })).errors.some((error) => error.includes("control.color")),
+        true,
+        `semantic_styles values must reject ${JSON.stringify(badValue)}`
+      );
+    }
+    for (const badIdentity of ["", "   "]) {
+      assert.equal(
+        validateStyle(makeStyle({ semantic_styles: { [badIdentity]: { color: "#000000" } } })).errors.some((error) =>
+          error.includes("keys must be non-empty")
+        ),
+        true,
+        "semantic_styles identities must be non-empty"
+      );
+    }
+    const { errors, warnings } = validateStyle(makeStyle({ semantic_styles: { control: { color: "#666666", dash: "long" } } }));
     assert.deepEqual(errors, []);
-    assert.equal(warnings.some((warning) => warning.includes("corner_radius")), true);
+    assert.equal(warnings.some((warning) => warning.includes("control.dash")), true);
+  });
+
+  await check("unknown style fields are preserved and warned", async () => {
+    const { errors, warnings } = validateStyle(makeStyle({ bevel_style: 2 }));
+    assert.deepEqual(errors, []);
+    assert.equal(warnings.some((warning) => warning.includes("bevel_style")), true);
   });
 
   await check("style ids must be filename-safe", async () => {
@@ -315,7 +397,10 @@ try {
       });
 
       await check("figure_style_write creates a sibling style through MCP", async () => {
-        const result = await call("figure_style_write", { artifact_path: artifact, document: makeStyle() });
+        const result = await call("figure_style_write", {
+          artifact_path: artifact,
+          document: makeStyle({ semantic_styles: { control: { color: "#666666", marker: "circle" } } }),
+        });
         assert.equal(result.created, true);
         assert.equal(result.revision, 0);
         assert.equal(result.resolved_path, path.join(mcpDir, "main.si-style.json"));
@@ -326,6 +411,7 @@ try {
         assert.equal(result.exists, true);
         assert.equal(result.document.style_id, "main");
         assert.equal(result.document.palette.primary, "#2166AC");
+        assert.equal(result.document.semantic_styles.control.marker, "circle");
       });
 
       await check("figure_profile_get returns profile defaults through MCP", async () => {
