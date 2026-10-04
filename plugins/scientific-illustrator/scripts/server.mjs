@@ -11,6 +11,7 @@ import { VERSION as SERVER_VERSION, assertAllowedPath, assertAllowedRealPath, at
 import { readFigureBrief, writeFigureBrief } from "./figure-truth.mjs";
 import { readFigureStyle, writeFigureStyle } from "./figure-style.mjs";
 import { readFigureKind, readProfileKnowledge } from "./figure-knowledge.mjs";
+import { readFigurePlan, writeFigurePlan } from "./figure-plan.mjs";
 
 const execFileAsync = promisify(execFile);
 const SERVER_NAME = "scientific-illustrator-file-utils";
@@ -402,6 +403,51 @@ const tools = [
         kind: {
           type: "string",
           description: "Figure kind id from the v1 taxonomy.",
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "figure_plan_read",
+    description:
+      "Read the persistent design plan (how the figure expresses the scientific truth: figure_kind, archetype, reading order, encoding, hierarchy, layout constraints, render contexts). Resolution: derived next to an explicit brief_path when given; otherwise nearest ancestor '.scientific-illustrator/figures/<slug>.plan.json' above the artifact; otherwise sibling '<stem>.si-plan.json'. Returns exists=false and document=null when no plan exists yet; plans are regenerable and never carry truth.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        artifact_path: {
+          type: "string",
+          description: "Absolute path of the artifact (.drawio/.pptx) that anchors plan discovery.",
+        },
+        brief_path: {
+          type: "string",
+          description: "Explicit brief JSON path; the plan is resolved next to it by swapping the brief suffix (.brief.json -> .plan.json).",
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "figure_plan_write",
+    description:
+      "Create or update the persistent design plan. Creation writes revision 0; updates require expected_revision matching the current revision and increment it by 1 (optimistic locking). revision/created_at/updated_at are tool-managed. Plans never carry truth (claims, verbatim text, units stay in the brief). Unknown fields are preserved and reported in schema_warnings. Same resolution as figure_plan_read.",
+    inputSchema: {
+      type: "object",
+      required: ["document"],
+      properties: {
+        artifact_path: {
+          type: "string",
+          description: "Absolute path of the artifact (.drawio/.pptx) that anchors plan discovery.",
+        },
+        brief_path: {
+          type: "string",
+          description: "Explicit brief JSON path; the plan is resolved next to it by swapping the brief suffix (.brief.json -> .plan.json).",
+        },
+        document: { type: "object", description: "Full design plan following the design-plan@1 schema." },
+        expected_revision: {
+          type: "integer",
+          minimum: 0,
+          description: "Current revision when updating; omit only when creating.",
         },
       },
       additionalProperties: false,
@@ -1130,6 +1176,15 @@ async function handleTool(name, args = {}) {
       return readProfileKnowledge(args.profile);
     case "figure_kind_get":
       return readFigureKind(args.kind);
+    case "figure_plan_read":
+      return readFigurePlan({ artifactPath: args.artifact_path, briefPath: args.brief_path });
+    case "figure_plan_write":
+      return writeFigurePlan({
+        artifactPath: args.artifact_path,
+        briefPath: args.brief_path,
+        document: args.document,
+        expectedRevision: args.expected_revision,
+      });
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
@@ -1144,7 +1199,7 @@ async function handleMessage(message) {
       protocolVersion,
       capabilities: { tools: { listChanged: false } },
       serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
-      instructions: "This is the post-live draw.io file-utilities server, not the live drawing backend. For Scientific Illustrator work, first use drawio_live_get_capabilities and construct every region visibly with drawio_live_* tools, including local screenshot/correction gates. Use these file utilities only after live cells exist to validate, inspect, export, or repair a saved snapshot, unless the user explicitly requested a non-live file-only workflow. drawio_create_diagram and drawio_write_xml require a declared workflow_context. Never rasterize reconstructable text, shapes, arrows, tables, charts, axes, or legends; every deliverable image cell must be one atomic irreducible raster unit with a specific reason, tight-source/crop audit, contains_reconstructable_content=false, and a decomposition note. Inline HTML/SVG images are rejected because their source and crop cannot be audited. A trace reference overlay is analysis-only and must not remain in the final deliverable. figure_brief_read/figure_brief_write persist the scientific-truth brief with three-level resolution (explicit path, project .scientific-illustrator/, or sibling); a missing brief is reported as exists=false, never invented, and brief reads/writes return recreation_gate (unresolved ambiguity under the declared recreation policy). figure_style_read/figure_style_write persist the shared manuscript style contract with the same resolution and optimistic locking. figure_profile_get returns a design profile's quality rules plus its machine-readable default parameters; figure_kind_get returns the grammar page for a figure kind (primitives, archetypes, encoding, failure modes, boundaries).",
+      instructions: "This is the post-live draw.io file-utilities server, not the live drawing backend. For Scientific Illustrator work, first use drawio_live_get_capabilities and construct every region visibly with drawio_live_* tools, including local screenshot/correction gates. Use these file utilities only after live cells exist to validate, inspect, export, or repair a saved snapshot, unless the user explicitly requested a non-live file-only workflow. drawio_create_diagram and drawio_write_xml require a declared workflow_context. Never rasterize reconstructable text, shapes, arrows, tables, charts, axes, or legends; every deliverable image cell must be one atomic irreducible raster unit with a specific reason, tight-source/crop audit, contains_reconstructable_content=false, and a decomposition note. Inline HTML/SVG images are rejected because their source and crop cannot be audited. A trace reference overlay is analysis-only and must not remain in the final deliverable. figure_brief_read/figure_brief_write persist the scientific-truth brief with three-level resolution (explicit path, project .scientific-illustrator/, or sibling); a missing brief is reported as exists=false, never invented, and brief reads/writes return recreation_gate (unresolved ambiguity under the declared recreation policy). figure_style_read/figure_style_write persist the shared manuscript style contract with the same resolution and optimistic locking. figure_profile_get returns a design profile's quality rules plus its machine-readable default parameters; figure_kind_get returns the grammar page for a figure kind (primitives, archetypes, encoding, failure modes, boundaries). figure_plan_read/figure_plan_write persist the design plan (kind, archetype, reading order, encoding, hierarchy, layout constraints, render contexts); plans are regenerable, never carry truth, and resolve next to an explicit brief_path or through the same three-level artifact discovery.",
     });
   }
   if (method === "ping") return rpcResult(id, {});

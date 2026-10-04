@@ -504,7 +504,7 @@ async function findProjectDirectory(startDir, stopAtRoot) {
 // Path arguments are strict: non-strings and relative paths are rejected
 // instead of being coerced or silently resolved against the MCP server's own
 // working directory (the plugin install directory, not the user project).
-function normalizePathArgument(value, name) {
+export function normalizePathArgument(value, name) {
   if (typeof value !== "string" || value.trim() === "") {
     throw new Error(`${name} must be a non-empty absolute path string.`);
   }
